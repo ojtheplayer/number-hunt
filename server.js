@@ -330,6 +330,10 @@ io.on('connection', (socket) => {
     // Check win condition
     const maxScore = (room.settings.tallySize * room.settings.tallySize - blocked.size) + doubleTaps.size;
     if (player.score === maxScore) {
+      if (room.bonusTimeout) {
+        clearTimeout(room.bonusTimeout);
+        room.bonusTimeout = null;
+      }
       room.state = 'game_over';
       io.to(roomCode).emit('game_over', {
         winnerId: player.id,
@@ -346,6 +350,7 @@ io.on('connection', (socket) => {
 
     const room = rooms.get(roomCode);
     if (!room || room.state !== 'playing') return;
+    if (room.bonusTimeout) return; // ignore during give up bonus phase
 
     // Verify it is the Searcher who found the number
     if (socket.id !== room.currentSearcher) return;
@@ -353,7 +358,7 @@ io.on('connection', (socket) => {
 
     // Lock tapping immediately
     room.tappingLocked = true;
-    io.to(roomCode).emit('tapping_locked');
+    io.to(roomCode).emit('tapping_locked', { reason: 'Number found!' });
 
     // Switch roles
     const prevCaller = room.currentCaller;
@@ -368,6 +373,45 @@ io.on('connection', (socket) => {
     console.log(`Number found in room ${roomCode}. Roles switched. New Caller: ${room.currentCaller}`);
   });
 
+  // 6.5. Searcher Give Up
+  socket.on('searcher_give_up', () => {
+    const roomCode = socket.roomId;
+    if (!roomCode) return;
+
+    const room = rooms.get(roomCode);
+    if (!room || room.state !== 'playing') return;
+
+    // Verify it is the Searcher giving up
+    if (socket.id !== room.currentSearcher) return;
+    if (room.currentNumber === null) return;
+    if (room.bonusTimeout) return; // already in bonus period
+
+    console.log(`Searcher ${socket.playerName} in room ${roomCode} initiated Give Up. Starting 5s caller bonus tapping.`);
+
+    // Broadcast that searcher gave up and bonus period starts (5 seconds)
+    io.to(roomCode).emit('give_up_bonus_start', { durationMs: 5000 });
+
+    room.bonusTimeout = setTimeout(() => {
+      room.bonusTimeout = null;
+
+      // Lock tapping immediately
+      room.tappingLocked = true;
+      io.to(roomCode).emit('tapping_locked', { reason: 'Bonus time over!' });
+
+      // Switch roles
+      const prevCaller = room.currentCaller;
+      room.currentCaller = room.currentSearcher;
+      room.currentSearcher = prevCaller;
+
+      room.players.forEach(p => {
+        p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
+      });
+
+      room.currentNumber = null;
+      console.log(`Bonus period ended in room ${roomCode}. Roles switched. New Caller: ${room.currentCaller}`);
+    }, 5000);
+  });
+
   // 7. Play Again
   socket.on('play_again', () => {
     const roomCode = socket.roomId;
@@ -379,6 +423,11 @@ io.on('connection', (socket) => {
     // Only host can trigger restart
     if (room.players[0] && room.players[0].id !== socket.id) return;
     if (room.players.length < 2) return;
+
+    if (room.bonusTimeout) {
+      clearTimeout(room.bonusTimeout);
+      room.bonusTimeout = null;
+    }
 
     // Reset game state
     room.players.forEach(p => {
@@ -418,6 +467,11 @@ io.on('connection', (socket) => {
       if (room) {
         // Remove player from room
         room.players = room.players.filter(p => p.id !== socket.id);
+
+        if (room.bonusTimeout) {
+          clearTimeout(room.bonusTimeout);
+          room.bonusTimeout = null;
+        }
 
         if (room.players.length === 0) {
           // Delete empty room
