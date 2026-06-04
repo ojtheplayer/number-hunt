@@ -33,7 +33,7 @@ function cyrb128(str) {
     k = str.charCodeAt(i);
     h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
     h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
-    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
+    h3 = h4 ^ Math.imul(h4 ^ k, 951274213);
     h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
   }
   h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
@@ -149,7 +149,8 @@ io.on('connection', (socket) => {
       name: cleanName,
       ready: room.players.length === 0, // host is auto-ready
       score: 0,
-      role: null
+      role: null,
+      tappedBoxes: []
     };
 
     room.players.push(player);
@@ -206,10 +207,11 @@ io.on('connection', (socket) => {
       return socket.emit('error_message', 'Need 2 players to start game.');
     }
 
-    // Reset scores & status
+    // Reset scores, tapped lists, & status
     room.players.forEach(p => {
       p.score = 0;
       p.ready = true;
+      p.tappedBoxes = [];
     });
 
     room.state = 'playing';
@@ -273,7 +275,7 @@ io.on('connection', (socket) => {
   });
 
   // 5. Tally Tap
-  socket.on('tally_tap', () => {
+  socket.on('tally_tap', ({ index }) => {
     const roomCode = socket.roomId;
     if (!roomCode) return;
 
@@ -287,27 +289,53 @@ io.on('connection', (socket) => {
     const player = room.players.find(p => p.id === socket.id);
     if (!player) return;
 
+    const idx = parseInt(index, 10);
+    if (isNaN(idx) || idx < 0 || idx >= room.settings.tallySize * room.settings.tallySize) return;
+
     // Compute obstacles & double tap count using seed to determine target score to win
     const blocked = getBlockedBoxes(room.seed, room.settings.tallySize);
-    const doubleTaps = getDoubleTapBoxes(room.seed, room.settings.tallySize, blocked);
-    const maxScore = (room.settings.tallySize * room.settings.tallySize - blocked.size) + doubleTaps.size;
+    if (blocked.has(idx)) return; // blocked box tapped
 
-    if (player.score < maxScore) {
+    const doubleTaps = getDoubleTapBoxes(room.seed, room.settings.tallySize, blocked);
+    const isDouble = doubleTaps.has(idx);
+
+    // Count existing taps on this box
+    const currentTaps = player.tappedBoxes.filter(x => x === idx).length;
+
+    if (isDouble) {
+      if (currentTaps >= 2) return; // already fully tapped
+      player.tappedBoxes.push(idx);
       player.score++;
+      
+      const newTaps = currentTaps + 1;
       io.to(roomCode).emit('tally_update', {
         playerId: socket.id,
+        index: idx,
+        taps: newTaps,
         filled: player.score
       });
+    } else {
+      if (currentTaps >= 1) return; // already tapped
+      player.tappedBoxes.push(idx);
+      player.score++;
 
-      // Check win condition
-      if (player.score === maxScore) {
-        room.state = 'game_over';
-        io.to(roomCode).emit('game_over', {
-          winnerId: player.id,
-          winnerName: player.name
-        });
-        console.log(`Game over in room ${roomCode}. Winner: ${player.name}`);
-      }
+      io.to(roomCode).emit('tally_update', {
+        playerId: socket.id,
+        index: idx,
+        taps: 1,
+        filled: player.score
+      });
+    }
+
+    // Check win condition
+    const maxScore = (room.settings.tallySize * room.settings.tallySize - blocked.size) + doubleTaps.size;
+    if (player.score === maxScore) {
+      room.state = 'game_over';
+      io.to(roomCode).emit('game_over', {
+        winnerId: player.id,
+        winnerName: player.name
+      });
+      console.log(`Game over in room ${roomCode}. Winner: ${player.name}`);
     }
   });
 
@@ -355,6 +383,7 @@ io.on('connection', (socket) => {
     // Reset game state
     room.players.forEach(p => {
       p.score = 0;
+      p.tappedBoxes = [];
     });
 
     room.state = 'playing';

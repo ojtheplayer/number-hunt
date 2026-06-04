@@ -387,7 +387,7 @@
       animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
-    /* Inkwell Refill UI */
+    /* Ink Refill UI */
     .inkwell-container {
       display: flex;
       align-items: center;
@@ -960,6 +960,7 @@
           <div class="handdrawn-box red-theme" style="width: 100%; text-align: center; padding: 1rem;">
             <div style="font-size: 1.2rem; color: var(--pencil-gray);">Listen closely!</div>
             <div id="hudFindNumber" class="find-hud">Find: ...</div>
+            <button id="btnHint" class="btn btn-outline" style="width: 100%; margin-top: 0.5rem; font-size: 1.1rem; padding: 0.3rem 1rem;">Use Hint (3 Left)</button>
           </div>
 
           <div id="numberPageScroll" class="number-page-scroll red-border">
@@ -1041,6 +1042,9 @@
     
     // Ink refill tracker
     let inkLevel = 15;
+    
+    // Hint tracker
+    let hintsLeft = 3;
 
     // DOM Elements
     const screenHome = document.getElementById('screenHome');
@@ -1092,6 +1096,7 @@
     const hudFindNumber = document.getElementById('hudFindNumber');
     const numberPageBoard = document.getElementById('numberPageBoard');
     const numberPageScroll = document.getElementById('numberPageScroll');
+    const btnHint = document.getElementById('btnHint');
 
     // Winner Elements
     const winnerLabel = document.getElementById('winnerLabel');
@@ -1558,21 +1563,8 @@
           inkLevel--;
           updateInkwellUI();
 
-          // Increment Taps state
-          state.taps++;
-
-          if (state.type === 'double') {
-            if (state.taps === 1) {
-              box.classList.add('half-filled');
-            } else if (state.taps === 2) {
-              box.classList.remove('half-filled');
-              box.classList.add('filled');
-            }
-          } else {
-            box.classList.add('filled');
-          }
-
-          socket.emit('tally_tap');
+          // Emit index directly for server evaluation & broadcast
+          socket.emit('tally_tap', { index: i });
         });
 
         tallyGrid.appendChild(box);
@@ -1606,7 +1598,6 @@
     function refillInkPen() {
       if (inkLevel === 15) return;
       
-      // Spin animation trigger
       inkwellBottle.style.transform = 'rotate(360deg) scale(1.2)';
       setTimeout(() => {
         inkwellBottle.style.transform = 'none';
@@ -1615,6 +1606,96 @@
       inkLevel = 15;
       updateInkwellUI();
     }
+
+    // Hint Click Handler (highlights the active number's page quarter)
+    btnHint.addEventListener('click', () => {
+      if (myRole !== 'searcher') return;
+      if (currentNumber === null) return showError('Wait for the Caller to call a number.');
+      if (hintsLeft <= 0) return showError('No hints left!');
+
+      // Find target number position inside seeded coordinate layout
+      const { layout, boardHeight } = generateScatteredLayout(currentSeed, currentSettings.numRange);
+      const target = layout.find(item => item.type === 'number' && item.val === currentNumber);
+      if (!target) return;
+
+      // Consume hint
+      hintsLeft--;
+      btnHint.innerText = `Use Hint (${hintsLeft} Left)`;
+      if (hintsLeft <= 0) {
+        btnHint.disabled = true;
+      }
+
+      const halfH = boardHeight / 2;
+      let left = 0;
+      let top = 0;
+      let sectorName = '';
+
+      // Determine 2x2 grid quarter coordinates
+      if (target.y < halfH) {
+        top = 0;
+        if (target.x < 300) {
+          left = 0;
+          sectorName = 'Top-Left';
+        } else {
+          left = 300;
+          sectorName = 'Top-Right';
+        }
+      } else {
+        top = halfH;
+        if (target.x < 300) {
+          left = 0;
+          sectorName = 'Bottom-Left';
+        } else {
+          left = 300;
+          sectorName = 'Bottom-Right';
+        }
+      }
+
+      // Create semi-transparent overlay
+      const overlay = document.createElement('div');
+      overlay.style.position = 'absolute';
+      overlay.style.left = `${left}px`;
+      overlay.style.top = `${top}px`;
+      overlay.style.width = '300px';
+      overlay.style.height = `${halfH}px`;
+      overlay.style.backgroundColor = 'rgba(255, 243, 176, 0.45)'; // transparent yellow crayon
+      overlay.style.border = '4px dashed var(--ink-red)';
+      overlay.style.borderRadius = '12px';
+      overlay.style.pointerEvents = 'none'; // click-through
+      overlay.style.zIndex = '10';
+      overlay.style.transition = 'opacity 0.5s ease-out';
+
+      // Hint Label Doodle
+      const dLabel = document.createElement('div');
+      dLabel.innerText = '🔍 HINT ZONE';
+      dLabel.style.fontFamily = 'Caveat';
+      dLabel.style.fontSize = '2.2rem';
+      dLabel.style.color = 'var(--ink-red)';
+      dLabel.style.position = 'absolute';
+      dLabel.style.top = '15px';
+      dLabel.style.left = '15px';
+      overlay.appendChild(dLabel);
+
+      numberPageBoard.appendChild(overlay);
+
+      // Scroll viewport smoothly to center the highlight quarter
+      numberPageScroll.scrollTo({
+        left: left,
+        top: top - 40,
+        behavior: 'smooth'
+      });
+
+      showError(`Hint activated: Scanning the ${sectorName} page quadrant!`);
+
+      // Fade out and delete highlight element after 3 seconds
+      setTimeout(() => {
+        overlay.style.opacity = '0';
+      }, 2500);
+
+      setTimeout(() => {
+        overlay.remove();
+      }, 3000);
+    });
 
     // Socket Event: Game Start / Reset Game
     function initializeGameScreen({ seed, settings, firstCaller }) {
@@ -1625,6 +1706,11 @@
       // Reset ink
       inkLevel = 15;
       updateInkwellUI();
+
+      // Reset Hints
+      hintsLeft = 3;
+      btnHint.innerText = `Use Hint (3 Left)`;
+      btnHint.disabled = false;
 
       // Determine initial roles
       myRole = (firstCaller === myId) ? 'caller' : 'searcher';
@@ -1681,8 +1767,10 @@
 
         if (currentNumber === null) {
           hudFindNumber.innerText = 'Waiting for Call...';
+          btnHint.disabled = true;
         } else {
           hudFindNumber.innerText = `Find: ${currentNumber}!`;
+          btnHint.disabled = (hintsLeft <= 0);
         }
       }
 
@@ -1723,6 +1811,8 @@
         void hudFindNumber.offsetWidth;
         hudFindNumber.style.animation = null;
         
+        btnHint.disabled = (hintsLeft <= 0);
+
         // Auto scroll Searcher viewport back to top/left coordinates center
         numberPageScroll.scrollLeft = 0;
         numberPageScroll.scrollTop = 0;
@@ -1750,40 +1840,28 @@
     });
 
     // Socket Event: Tally Scores Updated
-    socket.on('tally_update', ({ playerId, filled }) => {
+    socket.on('tally_update', ({ playerId, index, taps, filled }) => {
       if (playerId === myId) {
         tapScore = filled;
         scorePlayer.innerText = `${tapScore} / ${totalTargetTaps}`;
         
-        // Safety sync local boxes visually
-        const boxes = tallyGrid.querySelectorAll('.tally-box');
-        let indexFilledCount = 0;
-        
-        boxTapStates.forEach((state, i) => {
-          if (state.type === 'blocked') return;
-          
-          if (indexFilledCount < filled) {
-            if (state.type === 'double') {
-              if (state.taps === 0) {
-                state.taps = 1;
-                boxes[i].classList.add('half-filled');
-                indexFilledCount++;
-              }
-              if (indexFilledCount < filled && state.taps === 1) {
-                state.taps = 2;
-                boxes[i].classList.remove('half-filled');
-                boxes[i].classList.add('filled');
-                indexFilledCount++;
-              }
-            } else {
-              if (state.taps === 0) {
-                state.taps = 1;
-                boxes[i].classList.add('filled');
-                indexFilledCount++;
-              }
+        // Visual Sync of targeted cell box
+        const box = tallyGrid.querySelector(`.tally-box[data-index="${index}"]`);
+        const state = boxTapStates[index];
+
+        if (box && state) {
+          state.taps = taps;
+          if (state.type === 'double') {
+            if (taps === 1) {
+              box.classList.add('half-filled');
+            } else if (taps === 2) {
+              box.classList.remove('half-filled');
+              box.classList.add('filled');
             }
+          } else {
+            box.classList.add('filled');
           }
-        });
+        }
       } else {
         opponentScore = filled;
         scoreOpponent.innerText = `${opponentScore} / ${totalTargetTaps}`;
