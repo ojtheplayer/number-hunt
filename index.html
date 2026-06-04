@@ -596,6 +596,7 @@
 
     /* Searcher Layout */
     .searcher-panel {
+      position: relative;
       display: flex;
       flex-direction: column;
       width: 100%;
@@ -790,6 +791,81 @@
       transform: translateX(-50%) translateY(0);
     }
 
+    /* Bonus Countdown Overlay */
+    .bonus-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      border-radius: 12px;
+      padding: 1.5rem;
+      text-align: center;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    .bonus-title {
+      font-family: 'Caveat', cursive;
+      font-size: 2.8rem;
+      color: var(--ink-red);
+      margin-bottom: 0.5rem;
+      transform: rotate(-3deg);
+      animation: pulseAlert 1s ease infinite alternate;
+    }
+
+    .bonus-countdown {
+      font-size: 4.5rem;
+      font-weight: bold;
+      color: var(--pencil-lead);
+      font-family: 'Caveat', cursive;
+      margin: 0.5rem 0;
+    }
+
+    .bonus-sub {
+      font-size: 1.2rem;
+      color: var(--pencil-gray);
+      font-family: 'Patrick Hand', cursive;
+    }
+
+    @keyframes pulseAlert {
+      from { transform: rotate(-3deg) scale(0.95); }
+      to { transform: rotate(-3deg) scale(1.05); }
+    }
+
+    .tally-grid.frenzy-active {
+      box-shadow: 0 0 25px rgba(255, 243, 176, 0.95), inset 0 0 12px rgba(255, 243, 176, 0.6);
+      border-color: var(--ink-red) !important;
+      animation: borderFlash 0.5s infinite alternate;
+    }
+
+    @keyframes borderFlash {
+      from { border-color: var(--pencil-lead); }
+      to { border-color: var(--ink-red); }
+    }
+
+    .scattered-num.giveup-reveal {
+      background-color: var(--accent-yellow) !important;
+      border: 3px dashed var(--ink-red) !important;
+      border-radius: 8px;
+      padding: 4px 8px;
+      z-index: 100 !important; /* above the overlay */
+      animation: pulseReveal 0.6s ease infinite alternate;
+      color: var(--ink-red) !important;
+      opacity: 1 !important;
+      transform-origin: center;
+    }
+
+    @keyframes pulseReveal {
+      from { transform: scale(1) rotate(-5deg); }
+      to { transform: scale(1.3) rotate(5deg); }
+    }
+
     /* Responsive adjustments */
     @media (max-width: 500px) {
       .notebook-page {
@@ -916,7 +992,13 @@
 
         <!-- 3A. CALLER VIEW -->
         <div id="viewCaller" class="caller-panel">
-          <div class="handdrawn-box" style="width:100%; padding: 1rem;">
+          <div id="callerBonusBanner" class="handdrawn-box red-theme hidden" style="width:100%; text-align: center; background: var(--accent-yellow); border-color: var(--ink-red);">
+            <div class="bonus-title" style="font-size: 2.2rem; margin-bottom: 0.2rem; color: var(--ink-red);">⚡ FRENZY BONUS! ⚡</div>
+            <div style="font-size: 1.2rem; font-weight: bold;">TAP AS FAST AS YOU CAN!</div>
+            <div id="callerBonusTimer" style="font-size: 2.8rem; font-weight: bold; color: var(--ink-red); font-family: 'Caveat';">5.0s</div>
+          </div>
+
+          <div id="callerNormalCard" class="handdrawn-box" style="width:100%; padding: 1rem;">
             <h2>Call a Number</h2>
             <div class="call-controls">
               <input type="number" id="inputCallNumber" class="input-field" placeholder="Enter number...">
@@ -957,10 +1039,21 @@
 
         <!-- 3B. SEARCHER VIEW -->
         <div id="viewSearcher" class="searcher-panel hidden">
+          <!-- Searcher Give Up Bonus Overlay -->
+          <div id="searcherBonusOverlay" class="bonus-overlay hidden">
+            <div class="bonus-title">Gave Up!</div>
+            <div class="bonus-sub">Opponent is getting a tapping bonus!</div>
+            <div id="searcherBonusTimer" class="bonus-countdown">5</div>
+            <div class="bonus-sub">Roles will swap shortly...</div>
+          </div>
+
           <div class="handdrawn-box red-theme" style="width: 100%; text-align: center; padding: 1rem;">
             <div style="font-size: 1.2rem; color: var(--pencil-gray);">Listen closely!</div>
             <div id="hudFindNumber" class="find-hud">Find: ...</div>
-            <button id="btnHint" class="btn btn-outline" style="width: 100%; margin-top: 0.5rem; font-size: 1.1rem; padding: 0.3rem 1rem;">Use Hint (3 Left)</button>
+            <div style="display: flex; gap: 10px; margin-top: 0.5rem;">
+              <button id="btnHint" class="btn btn-outline" style="flex: 1; font-size: 1.1rem; padding: 0.3rem 1rem; margin: 0;">Use Hint (3 Left)</button>
+              <button id="btnGiveUp" class="btn btn-red" style="flex: 1; font-size: 1.1rem; padding: 0.3rem 1rem; margin: 0;" disabled>Give Up (10s)</button>
+            </div>
           </div>
 
           <div id="numberPageScroll" class="number-page-scroll red-border">
@@ -1046,6 +1139,10 @@
     // Hint tracker
     let hintsLeft = 3;
 
+    // Cooldown and Bonus phase timers
+    let giveUpCooldownInterval = null;
+    let bonusCountdownInterval = null;
+
     // DOM Elements
     const screenHome = document.getElementById('screenHome');
     const screenLobby = document.getElementById('screenLobby');
@@ -1091,12 +1188,18 @@
     const inkwellBottle = document.getElementById('inkwellBottle');
     const inkProgress = document.getElementById('inkProgress');
     const labelInkLevel = document.getElementById('labelInkLevel');
+    const callerBonusBanner = document.getElementById('callerBonusBanner');
+    const callerBonusTimer = document.getElementById('callerBonusTimer');
+    const callerNormalCard = document.getElementById('callerNormalCard');
 
     // Searcher Elements
     const hudFindNumber = document.getElementById('hudFindNumber');
     const numberPageBoard = document.getElementById('numberPageBoard');
     const numberPageScroll = document.getElementById('numberPageScroll');
     const btnHint = document.getElementById('btnHint');
+    const btnGiveUp = document.getElementById('btnGiveUp');
+    const searcherBonusOverlay = document.getElementById('searcherBonusOverlay');
+    const searcherBonusTimer = document.getElementById('searcherBonusTimer');
 
     // Winner Elements
     const winnerLabel = document.getElementById('winnerLabel');
@@ -1697,7 +1800,34 @@
       }, 3000);
     });
 
-    // Socket Event: Game Start / Reset Game
+    // Give Up Cooldown Logic
+    function startGiveUpCooldown() {
+      clearInterval(giveUpCooldownInterval);
+      btnGiveUp.disabled = true;
+      let secondsLeft = 10;
+      btnGiveUp.innerText = `Give Up (${secondsLeft}s)`;
+      
+      giveUpCooldownInterval = setInterval(() => {
+        secondsLeft--;
+        if (secondsLeft <= 0) {
+          clearInterval(giveUpCooldownInterval);
+          btnGiveUp.disabled = (myRole !== 'searcher' || currentNumber === null);
+          btnGiveUp.innerText = 'Give Up';
+        } else {
+          btnGiveUp.innerText = `Give Up (${secondsLeft}s)`;
+        }
+      }, 1000);
+    }
+
+    // Give Up Click Handler
+    btnGiveUp.addEventListener('click', () => {
+      if (myRole !== 'searcher') return;
+      if (currentNumber === null) return showError('Wait for the Caller to call a number.');
+      
+      socket.emit('searcher_give_up');
+    });
+
+     // Socket Event: Game Start / Reset Game
     function initializeGameScreen({ seed, settings, firstCaller }) {
       currentSeed = seed;
       currentSettings = settings;
@@ -1711,6 +1841,18 @@
       hintsLeft = 3;
       btnHint.innerText = `Use Hint (3 Left)`;
       btnHint.disabled = false;
+
+      // Reset Give Up Cooldown & Timer
+      clearInterval(giveUpCooldownInterval);
+      clearInterval(bonusCountdownInterval);
+      btnGiveUp.disabled = true;
+      btnGiveUp.innerText = 'Give Up (10s)';
+
+      // Hide overlays
+      searcherBonusOverlay.classList.add('hidden');
+      callerBonusBanner.classList.add('hidden');
+      callerNormalCard.classList.remove('hidden');
+      tallyGrid.classList.remove('frenzy-active');
 
       // Determine initial roles
       myRole = (firstCaller === myId) ? 'caller' : 'searcher';
@@ -1768,6 +1910,8 @@
         if (currentNumber === null) {
           hudFindNumber.innerText = 'Waiting for Call...';
           btnHint.disabled = true;
+          btnGiveUp.disabled = true;
+          btnGiveUp.innerText = 'Give Up (10s)';
         } else {
           hudFindNumber.innerText = `Find: ${currentNumber}!`;
           btnHint.disabled = (hintsLeft <= 0);
@@ -1816,17 +1960,114 @@
         // Auto scroll Searcher viewport back to top/left coordinates center
         numberPageScroll.scrollLeft = 0;
         numberPageScroll.scrollTop = 0;
+
+        // Start Give Up cooldown
+        startGiveUpCooldown();
+      }
+    });
+
+    // Socket Event: Give Up Bonus Start
+    socket.on('give_up_bonus_start', ({ durationMs }) => {
+      clearInterval(giveUpCooldownInterval);
+      btnGiveUp.disabled = true;
+
+      let timeLeft = durationMs / 1000;
+      
+      if (myRole === 'caller') {
+        // Show Frenzy overlay and play exciting UI cues
+        callerNormalCard.classList.add('hidden');
+        callerBonusBanner.classList.remove('hidden');
+        tallyGrid.classList.add('frenzy-active');
+        callerBonusTimer.innerText = `${timeLeft.toFixed(1)}s`;
+
+        clearInterval(bonusCountdownInterval);
+        bonusCountdownInterval = setInterval(() => {
+          timeLeft -= 0.1;
+          if (timeLeft <= 0) {
+            clearInterval(bonusCountdownInterval);
+            callerBonusTimer.innerText = '0.0s';
+          } else {
+            callerBonusTimer.innerText = `${timeLeft.toFixed(1)}s`;
+          }
+        }, 100);
+      } else {
+        // Show Searcher Give Up overlay
+        searcherBonusOverlay.classList.remove('hidden');
+        searcherBonusTimer.innerText = Math.ceil(timeLeft);
+
+        // Highlight the target number on the board using seeded layout data
+        // This avoids accidentally highlighting decoy numbers with the same value
+        const { layout } = generateScatteredLayout(currentSeed, currentSettings.numRange);
+        const targetItem = layout.find(item => item.type === 'number' && item.val === currentNumber);
+
+        if (targetItem) {
+          // Find the span whose left/top matches the layout position (within 1px tolerance)
+          const spans = numberPageBoard.querySelectorAll('.scattered-num:not(.doodle)');
+          let revealedSpan = null;
+          for (const span of spans) {
+            const spanLeft = parseFloat(span.style.left);
+            const spanTop = parseFloat(span.style.top);
+            if (Math.abs(spanLeft - targetItem.x) < 1 && Math.abs(spanTop - targetItem.y) < 1) {
+              revealedSpan = span;
+              break;
+            }
+          }
+
+          if (revealedSpan) {
+            revealedSpan.classList.add('giveup-reveal');
+
+            // Scroll the number page viewport to center the number
+            const boardRect = numberPageBoard.getBoundingClientRect();
+            const spanRect = revealedSpan.getBoundingClientRect();
+            const relTop = spanRect.top - boardRect.top + numberPageScroll.scrollTop;
+            const relLeft = spanRect.left - boardRect.left + numberPageScroll.scrollLeft;
+
+            numberPageScroll.scrollTo({
+              top: relTop - numberPageScroll.clientHeight / 2 + spanRect.height / 2,
+              left: relLeft - numberPageScroll.clientWidth / 2 + spanRect.width / 2,
+              behavior: 'smooth'
+            });
+          }
+        }
+
+        clearInterval(bonusCountdownInterval);
+        bonusCountdownInterval = setInterval(() => {
+          timeLeft -= 1;
+          if (timeLeft <= 0) {
+            clearInterval(bonusCountdownInterval);
+            searcherBonusTimer.innerText = '0';
+          } else {
+            searcherBonusTimer.innerText = Math.ceil(timeLeft);
+          }
+        }, 1000);
       }
     });
 
     // Socket Event: Tapping Locked
-    socket.on('tapping_locked', () => {
+    socket.on('tapping_locked', ({ reason }) => {
+      const msg = reason || 'Number found!';
+
+      clearInterval(giveUpCooldownInterval);
+      clearInterval(bonusCountdownInterval);
+      btnGiveUp.disabled = true;
+
+      // Remove any give-up number highlight
+      numberPageBoard.querySelectorAll('.giveup-reveal').forEach(el => {
+        el.classList.remove('giveup-reveal');
+      });
+
+      // Hide overlays
+      searcherBonusOverlay.classList.add('hidden');
+      callerBonusBanner.classList.add('hidden');
+      callerNormalCard.classList.remove('hidden');
+      tallyGrid.classList.remove('frenzy-active');
+
       if (myRole === 'caller') {
         tallyLockOverlay.classList.remove('hidden');
         tallyLockOverlay.innerText = 'Role Swapped!';
       }
       
-      showError('Number found! Swapping roles...');
+      showError(`${msg} Swapping roles...`);
 
       setTimeout(() => {
         myRole = (myRole === 'caller') ? 'searcher' : 'caller';
