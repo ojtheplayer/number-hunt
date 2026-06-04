@@ -1,0 +1,1868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Number Hunt - Real-time Handwriting Game</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@700&family=Patrick+Hand&display=swap" rel="stylesheet">
+  
+  <!-- Canvas Confetti for Winner Screen -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Google AdSense Script -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1234567890123456" crossorigin="anonymous"></script>
+
+  <style>
+    :root {
+      --paper-bg: #faf8f0;
+      --ink-blue: #1c3d5a;
+      --ink-red: #9e2a2b;
+      --pencil-lead: #333333;
+      --pencil-gray: #7a7a7a;
+      --accent-yellow: #fff3b0;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      font-family: 'Patrick Hand', 'Caveat', cursive, sans-serif;
+      background-color: #e5e5e5;
+      color: var(--pencil-lead);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      font-size: 1.2rem;
+    }
+
+    /* Notebook Page Container */
+    .notebook-page {
+      width: 100%;
+      max-width: 650px;
+      min-height: 95vh;
+      background-color: var(--paper-bg);
+      background-image: 
+        linear-gradient(rgba(173, 216, 230, 0.4) 1px, transparent 1px);
+      background-size: 100% 30px;
+      background-position: 0 0;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+      position: relative;
+      padding: 40px 20px 40px 60px; /* left margin space for red line */
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      transition: all 0.3s ease;
+      border: 1px solid #ddd;
+    }
+
+    /* Red Notebook Margin Line */
+    .notebook-page::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 45px;
+      width: 2px;
+      background-color: rgba(239, 148, 148, 0.8);
+      pointer-events: none;
+    }
+
+    /* Spiral binding holes representation */
+    .notebook-holes {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-around;
+      padding: 20px 0;
+      pointer-events: none;
+    }
+
+    .hole {
+      width: 15px;
+      height: 15px;
+      background-color: #e5e5e5;
+      border-radius: 50%;
+      border: 2px solid #ccc;
+      box-shadow: inset 1px 1px 3px rgba(0,0,0,0.2);
+    }
+
+    /* Typography */
+    h1 {
+      font-family: 'Caveat', cursive;
+      font-size: 3.5rem;
+      color: var(--ink-blue);
+      text-align: center;
+      margin-bottom: 1.5rem;
+      transform: rotate(-2deg);
+      text-shadow: 2px 2px 0px rgba(0,0,0,0.05);
+    }
+
+    h2 {
+      font-family: 'Caveat', cursive;
+      font-size: 2.2rem;
+      color: var(--ink-blue);
+      margin-bottom: 1rem;
+    }
+
+    /* Handdrawn UI Boxes */
+    .handdrawn-box {
+      border: 3px solid var(--ink-blue);
+      border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+      background: rgba(255, 255, 255, 0.7);
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+
+    .handdrawn-box.red-theme {
+      border-color: var(--ink-red);
+    }
+
+    /* Buttons */
+    .btn {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.4rem;
+      color: #fff;
+      background-color: var(--ink-blue);
+      border: 3px solid var(--ink-blue);
+      border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+      padding: 0.6rem 1.5rem;
+      cursor: pointer;
+      display: inline-block;
+      text-align: center;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+      box-shadow: 2px 3px 0px var(--pencil-lead);
+      user-select: none;
+      outline: none;
+    }
+
+    .btn:active {
+      transform: translate(2px, 3px);
+      box-shadow: 0px 0px 0px transparent;
+    }
+
+    .btn-red {
+      background-color: var(--ink-red);
+      border-color: var(--ink-red);
+    }
+
+    .btn-outline {
+      background-color: transparent;
+      color: var(--ink-blue);
+    }
+
+    .btn:disabled {
+      background-color: #ccc !important;
+      border-color: #ccc !important;
+      box-shadow: none !important;
+      cursor: not-allowed;
+      transform: none !important;
+    }
+
+    /* Text Inputs */
+    .input-field {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.3rem;
+      padding: 0.5rem 1rem;
+      border: 2px solid var(--ink-blue);
+      border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+      background: #fff;
+      color: var(--pencil-lead);
+      width: 100%;
+      outline: none;
+      margin-bottom: 1rem;
+    }
+
+    .input-field:focus {
+      background-color: var(--accent-yellow);
+    }
+
+    /* Screens Navigation */
+    .screen {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      animation: fadeIn 0.4s ease-out;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Home Screen Styles */
+    .home-buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-top: 1rem;
+    }
+
+    .join-code-container {
+      margin-top: 1rem;
+      animation: slideDown 0.3s ease-out;
+    }
+
+    @keyframes slideDown {
+      from { height: 0; opacity: 0; transform: translateY(-10px); }
+      to { height: auto; opacity: 1; transform: translateY(0); }
+    }
+
+    /* Lobby Screen Styles */
+    .room-code-display {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 15px;
+      background: var(--accent-yellow);
+      border: 2px dashed var(--ink-blue);
+      padding: 0.8rem;
+      font-size: 1.8rem;
+      font-weight: bold;
+      letter-spacing: 2px;
+      margin-bottom: 1.5rem;
+    }
+
+    .players-list {
+      margin-bottom: 1.5rem;
+    }
+
+    .player-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px dotted var(--pencil-gray);
+    }
+
+    .player-name {
+      font-size: 1.3rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge {
+      font-size: 0.8rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 4px;
+      border: 1px solid;
+    }
+
+    .badge-host {
+      background: #e2f0d9;
+      border-color: #385723;
+      color: #385723;
+    }
+
+    .badge-ready {
+      background: #c9daf8;
+      border-color: #1155cc;
+      color: #1155cc;
+    }
+
+    .settings-group {
+      margin-top: 1.5rem;
+    }
+
+    .settings-title {
+      font-size: 1.2rem;
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+      border-bottom: 2px solid var(--ink-blue);
+      display: inline-block;
+    }
+
+    .settings-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 1rem;
+    }
+
+    .option-btn {
+      padding: 0.4rem 0.8rem;
+      font-size: 1rem;
+      background: transparent;
+      border: 2px solid var(--ink-blue);
+      border-radius: 10px;
+      cursor: pointer;
+      font-family: 'Patrick Hand', cursive;
+      transition: background-color 0.15s, color 0.15s;
+    }
+
+    .option-btn.selected {
+      background: var(--ink-blue);
+      color: #fff;
+    }
+
+    /* Game Screen Styles */
+    .game-hud {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem;
+      border-bottom: 3px double var(--ink-blue);
+      margin-bottom: 1rem;
+      background: rgba(255,255,255,0.4);
+    }
+
+    .role-badge {
+      font-family: 'Caveat', cursive;
+      font-size: 1.8rem;
+      font-weight: bold;
+      padding: 0.2rem 0.8rem;
+      border-radius: 8px;
+      transform: rotate(-1deg);
+    }
+
+    .role-caller {
+      background-color: rgba(28, 61, 90, 0.15);
+      color: var(--ink-blue);
+      border: 2px solid var(--ink-blue);
+    }
+
+    .role-searcher {
+      background-color: rgba(158, 42, 43, 0.15);
+      color: var(--ink-red);
+      border: 2px solid var(--ink-red);
+    }
+
+    .scores-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 1.1rem;
+      margin-bottom: 0.5rem;
+      font-weight: bold;
+    }
+
+    .scores-row span {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    /* Caller Layout */
+    .caller-panel {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    .call-controls {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      margin-bottom: 1rem;
+    }
+
+    .call-controls input {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    .called-display {
+      font-size: 2.2rem;
+      font-weight: bold;
+      color: var(--ink-blue);
+      margin: 0.8rem 0;
+      text-align: center;
+      animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Inkwell Refill UI */
+    .inkwell-container {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      background: #fff;
+      border: 2px solid var(--ink-blue);
+      border-radius: 12px;
+      padding: 0.4rem 0.8rem;
+      width: 100%;
+      max-width: 280px;
+      margin: 0.5rem 0 1rem;
+    }
+
+    .inkwell-bottle {
+      font-size: 2.2rem;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.1s ease;
+      display: flex;
+      align-items: center;
+      position: relative;
+    }
+
+    .inkwell-bottle:active {
+      transform: scale(0.9);
+    }
+
+    .inkwell-bottle.shake-warn {
+      animation: shakeAlert 0.4s ease infinite;
+      filter: drop-shadow(0 0 5px var(--ink-red));
+    }
+
+    @keyframes shakeAlert {
+      0%, 100% { transform: rotate(0deg) scale(1.1); }
+      25% { transform: rotate(-12deg) scale(1.1); }
+      75% { transform: rotate(12deg) scale(1.1); }
+    }
+
+    .ink-bar-bg {
+      flex-grow: 1;
+      height: 10px;
+      background: #e0dcd3;
+      border-radius: 5px;
+      overflow: hidden;
+      margin: 0 10px;
+      border: 1px solid var(--pencil-gray);
+    }
+
+    .ink-bar-fill {
+      height: 100%;
+      background-color: var(--ink-blue);
+      width: 100%;
+      transition: width 0.15s ease;
+    }
+
+    /* Tally Grid */
+    .tally-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 0.5rem;
+      width: 100%;
+    }
+
+    .tally-title {
+      font-size: 1.4rem;
+      font-weight: bold;
+      margin-bottom: 0.2rem;
+    }
+
+    .tally-grid {
+      display: grid;
+      gap: 5px;
+      margin: 0.8rem 0;
+      background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10" fill="none" stroke="%23ccc" stroke-width="0.5"/></svg>');
+      padding: 10px;
+      border: 3px solid var(--pencil-lead);
+      border-radius: 12px;
+      background-color: #fff;
+      max-width: 100%;
+      overflow: auto;
+    }
+
+    .tally-box {
+      border: 2px dashed var(--pencil-gray);
+      border-radius: 4px;
+      position: relative;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(255, 255, 255, 0.6);
+      transition: background-color 0.2s, border-color 0.2s;
+    }
+
+    .tally-box:hover {
+      background-color: rgba(0, 0, 0, 0.03);
+    }
+
+    /* Double Tap cell indicator */
+    .tally-box.double-tap {
+      border: 2px double var(--pencil-lead);
+    }
+
+    /* Scribbled Blocked obstacle cell */
+    .tally-box.blocked {
+      background-color: #e5e5e5;
+      background-image: repeating-linear-gradient(45deg, #7a7a7a 0px, #7a7a7a 2px, transparent 2px, transparent 10px);
+      border: 2px solid #7a7a7a;
+      cursor: not-allowed !important;
+    }
+
+    .tally-box.blocked::before, .tally-box.blocked::after {
+      display: none !important;
+    }
+
+    /* Half filled state (single diagonal line) */
+    .tally-box.half-filled::before {
+      content: '';
+      position: absolute;
+      width: 4px;
+      height: 80%;
+      background-color: rgba(28, 61, 90, 0.4);
+      border-radius: 3px;
+      transform-origin: center;
+      transform: rotate(43deg);
+      animation: drawLine1 0.15s ease-out forwards;
+    }
+
+    .tally-box.half-filled::after {
+      display: none !important;
+    }
+
+    /* Filled state (complete X drawing) */
+    .tally-box.filled::before, .tally-box.filled::after {
+      content: '';
+      position: absolute;
+      width: 4px;
+      height: 80%;
+      background-color: var(--ink-blue);
+      border-radius: 3px;
+      opacity: 1;
+      transform-origin: center;
+    }
+
+    .tally-box.filled::before {
+      transform: rotate(43deg);
+      animation: drawLine1 0.12s ease-out forwards;
+    }
+
+    .tally-box.filled::after {
+      transform: rotate(-43deg);
+      animation: drawLine2 0.12s 0.1s ease-out forwards;
+      opacity: 0;
+    }
+
+    @keyframes drawLine1 {
+      from { height: 0; }
+      to { height: 80%; }
+    }
+
+    @keyframes drawLine2 {
+      from { height: 0; opacity: 0; }
+      to { height: 80%; opacity: 1; }
+    }
+
+    /* Ink splash effect */
+    .ink-splash {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle, rgba(28, 61, 90, 0.3) 0%, transparent 70%);
+      border-radius: 50%;
+      transform: scale(0);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .tally-box.filled .ink-splash, .tally-box.half-filled .ink-splash {
+      animation: splashAnimation 0.35s ease-out forwards;
+    }
+
+    @keyframes splashAnimation {
+      0% { transform: scale(0); opacity: 0; }
+      50% { transform: scale(1.6); opacity: 0.9; }
+      100% { transform: scale(1.3); opacity: 0.4; }
+    }
+
+    .tap-locked-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      color: var(--ink-red);
+      font-weight: bold;
+      border-radius: 8px;
+      pointer-events: all;
+    }
+
+    /* Searcher Layout */
+    .searcher-panel {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+    }
+
+    .find-hud {
+      font-family: 'Caveat', cursive;
+      font-size: 2.8rem;
+      font-weight: bold;
+      color: var(--ink-red);
+      text-align: center;
+      margin: 0.5rem 0 1.2rem;
+      animation: popInBounce 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    @keyframes popInBounce {
+      0% { transform: scale(0.3); opacity: 0; }
+      50% { transform: scale(1.15); }
+      70% { transform: scale(0.9); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Scrollable Scattered Number Canvas */
+    .number-page-scroll {
+      width: 100%;
+      max-height: 50vh;
+      overflow: auto;
+      border: 4px solid var(--ink-blue);
+      border-radius: 12px;
+      background-color: var(--paper-bg);
+      box-shadow: inset 2px 2px 10px rgba(0,0,0,0.1);
+      position: relative;
+    }
+
+    .number-page-scroll.red-border {
+      border-color: var(--ink-red);
+    }
+
+    .number-page-board {
+      width: 600px;
+      position: relative;
+      background-color: var(--paper-bg);
+      background-image: 
+        linear-gradient(rgba(173, 216, 230, 0.4) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(239, 148, 148, 0.4) 1px, transparent 1px);
+      background-size: 100% 30px, 100% 100%;
+      background-position: 0 0, 50px 0;
+    }
+
+    .scattered-num {
+      position: absolute;
+      color: var(--pencil-lead);
+      cursor: pointer;
+      user-select: none;
+      font-weight: bold;
+      transition: transform 0.1s ease;
+      padding: 10px;
+      display: inline-block;
+      text-align: center;
+      line-height: 1;
+    }
+
+    .scattered-num:active {
+      transform: scale(0.8) !important;
+      color: var(--ink-red);
+    }
+
+    /* Visual Camouflage Styles */
+    .scattered-num.faint {
+      color: var(--pencil-gray) !important;
+      opacity: 0.35;
+    }
+
+    .scattered-num.doodle {
+      color: rgba(28, 61, 90, 0.35) !important;
+      pointer-events: none;
+      cursor: default;
+    }
+
+    /* Winner Screen Styles */
+    .winner-panel {
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 1rem 0;
+    }
+
+    .trophy {
+      font-size: 6rem;
+      margin: 1rem 0;
+      animation: trophyFloat 2s ease-in-out infinite;
+      display: inline-block;
+    }
+
+    @keyframes trophyFloat {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50% { transform: translateY(-10px) rotate(5deg); }
+    }
+
+    .winner-banner {
+      font-size: 2.8rem;
+      color: var(--ink-blue);
+      font-weight: bold;
+      margin-bottom: 0.5rem;
+    }
+
+    .winner-name {
+      font-family: 'Caveat', cursive;
+      font-size: 3.5rem;
+      color: var(--ink-red);
+      margin-bottom: 2rem;
+      text-decoration: underline;
+    }
+
+    .winner-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+      width: 100%;
+      max-width: 250px;
+    }
+
+    /* Google AdSense / Fallback Styling */
+    .adsense-container {
+      width: 100%;
+      margin-top: auto;
+      padding-top: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      border-top: 1px dashed var(--pencil-gray);
+    }
+
+    .adsense-label {
+      font-size: 0.8rem;
+      color: var(--pencil-gray);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .adsense-box {
+      width: 100%;
+      min-height: 80px;
+      background-color: #f0ede4;
+      border: 2px dashed var(--pencil-gray);
+      border-radius: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .adsense-placeholder {
+      color: var(--pencil-gray);
+      font-size: 1.1rem;
+      font-style: italic;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .adsense-doodle {
+      font-size: 0.7rem;
+      color: var(--ink-blue);
+      border: 1px solid var(--ink-blue);
+      border-radius: 4px;
+      padding: 1px 4px;
+    }
+
+    /* Error Message Popups */
+    .error-toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-100px);
+      background: var(--ink-red);
+      color: white;
+      border: 2px solid var(--pencil-lead);
+      border-radius: 12px;
+      padding: 0.8rem 1.5rem;
+      font-size: 1.2rem;
+      z-index: 1000;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .error-toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 500px) {
+      .notebook-page {
+        padding: 30px 10px 20px 45px;
+        min-height: 100vh;
+      }
+      .notebook-page::before {
+        left: 35px;
+      }
+      .notebook-holes {
+        left: 5px;
+      }
+      h1 {
+        font-size: 2.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="notebook-page">
+    <!-- Notebook spiral binder design -->
+    <div class="notebook-holes">
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+      <div class="hole"></div>
+    </div>
+
+    <!-- Error Banner/Toast -->
+    <div id="errorToast" class="error-toast">Error message goes here</div>
+
+    <!-- SCREENS WRAPPER -->
+    <div id="screenContainer" style="flex: 1; display: flex; flex-direction: column;">
+      
+      <!-- 1. HOME SCREEN -->
+      <div id="screenHome" class="screen">
+        <h1>Number Hunt</h1>
+        <div class="handdrawn-box">
+          <h2>Welcome, Player!</h2>
+          <input type="text" id="inputPlayerName" class="input-field" placeholder="Enter your name..." value="Player 1">
+          <div class="home-buttons">
+            <button id="btnCreateRoom" class="btn">Create Room</button>
+            <button id="btnJoinRoomToggle" class="btn btn-outline">Join Room</button>
+          </div>
+
+          <div id="joinCodeContainer" class="join-code-container hidden">
+            <input type="text" id="inputRoomCode" class="input-field" placeholder="Enter 4-character code..." maxlength="4">
+            <button id="btnSubmitJoin" class="btn" style="width:100%;">Join Match!</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. LOBBY SCREEN -->
+      <div id="screenLobby" class="screen hidden">
+        <h1>Room Lobby</h1>
+        <div class="handdrawn-box">
+          <div style="text-align: center; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--pencil-gray);">Room Code</div>
+          <div class="room-code-display">
+            <span id="labelRoomCode">----</span>
+            <button id="btnCopyCode" class="btn btn-outline" style="font-size: 1rem; padding: 0.2rem 0.6rem; margin: 0;">Copy</button>
+          </div>
+
+          <h2>Players Connected:</h2>
+          <div id="lobbyPlayersList" class="players-list">
+            <!-- Dynamic players listed here -->
+          </div>
+
+          <!-- Host Settings -->
+          <div id="hostSettings" class="settings-group">
+            <h2>Game Settings <span style="font-size: 1rem; color: var(--pencil-gray); font-family:'Patrick Hand';">(Host Only)</span></h2>
+            
+            <div class="settings-title">Tally Grid Size</div>
+            <div class="settings-options" id="optionsTallySize">
+              <button class="option-btn selected" data-value="3">3 &times; 3</button>
+              <button class="option-btn" data-value="4">4 &times; 4</button>
+              <button class="option-btn" data-value="5">5 &times; 5</button>
+              <button class="option-btn" data-value="8">8 &times; 8 (64)</button>
+              <button class="option-btn" data-value="10">10 &times; 10 (100)</button>
+              <button class="option-btn" data-value="14">14 &times; 14 (196)</button>
+            </div>
+
+            <div class="settings-title">Number Range</div>
+            <div class="settings-options" id="optionsNumRange">
+              <button class="option-btn selected" data-value="1-30">1 - 30</button>
+              <button class="option-btn" data-value="1-50">1 - 50</button>
+              <button class="option-btn" data-value="1-99">1 - 99</button>
+              <button class="option-btn" data-value="1-150">1 - 150</button>
+              <button class="option-btn" data-value="1-200">1 - 200</button>
+            </div>
+          </div>
+
+          <div id="guestSettings" class="settings-group hidden">
+            <h2>Game Settings</h2>
+            <div style="font-size: 1.2rem; margin-bottom: 0.5rem;">
+              Tally Size: <span id="guestLabelTallySize" style="font-weight:bold;">3x3</span>
+            </div>
+            <div style="font-size: 1.2rem; margin-bottom: 1.5rem;">
+              Number Range: <span id="guestLabelNumRange" style="font-weight:bold;">1 - 30</span>
+            </div>
+          </div>
+
+          <button id="btnStartGame" class="btn" style="width: 100%; margin-top: 1rem;" disabled>Wait for Players...</button>
+        </div>
+      </div>
+
+      <!-- 3. GAME SCREEN -->
+      <div id="screenGame" class="screen hidden">
+        <div class="game-hud">
+          <div id="hudRoleBadge" class="role-badge role-caller">Caller</div>
+          <div id="hudTimer" style="font-size: 1.2rem; font-weight: bold;">Game Active</div>
+        </div>
+
+        <div class="scores-row">
+          <span>📝 You: <strong id="scorePlayer">0 / 9</strong></span>
+          <span>👤 Opponent: <strong id="scoreOpponent">0 / 9</strong></span>
+        </div>
+
+        <!-- 3A. CALLER VIEW -->
+        <div id="viewCaller" class="caller-panel">
+          <div class="handdrawn-box" style="width:100%; padding: 1rem;">
+            <h2>Call a Number</h2>
+            <div class="call-controls">
+              <input type="number" id="inputCallNumber" class="input-field" placeholder="Enter number...">
+              <button id="btnSubmitCall" class="btn">Call!</button>
+            </div>
+            <div id="msgCalledConfirmation" class="called-display hidden">You called: 47!</div>
+          </div>
+
+          <!-- Ink Refill Panel -->
+          <div class="inkwell-container">
+            <div id="inkwellBottle" class="inkwell-bottle" title="Tap to refill pen!">
+              ✒️
+            </div>
+            <div class="ink-bar-bg">
+              <div id="inkProgress" class="ink-bar-fill"></div>
+            </div>
+            <div style="font-size: 1rem; width: 65px; font-weight: bold; text-align: right;">
+              Ink: <span id="labelInkLevel">15</span>
+            </div>
+          </div>
+
+          <div class="tally-container">
+            <div class="tally-title">Your Tally Board</div>
+            <div id="tallyInstructions" style="font-size: 0.95rem; color: var(--pencil-gray); margin-bottom: 0.2rem; text-align: center;">
+              Tap as fast as possible to fill all boxes!
+            </div>
+            
+            <div style="position: relative; width: fit-content; max-width: 100%;">
+              <div id="tallyGrid" class="tally-grid">
+                <!-- Dynamically sized boxes -->
+              </div>
+              <div id="tallyLockOverlay" class="tap-locked-overlay hidden">
+                Board Locked
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3B. SEARCHER VIEW -->
+        <div id="viewSearcher" class="searcher-panel hidden">
+          <div class="handdrawn-box red-theme" style="width: 100%; text-align: center; padding: 1rem;">
+            <div style="font-size: 1.2rem; color: var(--pencil-gray);">Listen closely!</div>
+            <div id="hudFindNumber" class="find-hud">Find: ...</div>
+          </div>
+
+          <div id="numberPageScroll" class="number-page-scroll red-border">
+            <div id="numberPageBoard" class="number-page-board">
+              <!-- Seeded placed numbers -->
+            </div>
+          </div>
+          <div style="text-align: center; font-size: 1rem; color: var(--pencil-gray); margin-top: 8px;">
+            Scroll page to scan. Faint pencil numbers & decoys are hidden!
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. WINNER SCREEN -->
+      <div id="screenWinner" class="winner-panel hidden">
+        <span class="trophy">🏆</span>
+        <div id="winnerLabel" class="winner-banner">Winner!</div>
+        <div id="winnerNameDisplay" class="winner-name">Player Name</div>
+
+        <div class="handdrawn-box" style="width: 100%; margin-bottom: 2rem;">
+          <h2 style="margin-bottom: 0;">Play Again?</h2>
+          <p style="font-size: 1.1rem; color: var(--pencil-gray); margin-bottom: 1.5rem;">Continue playing in this room with your host.</p>
+          
+          <div class="winner-buttons">
+            <button id="btnPlayAgain" class="btn">Play Again</button>
+            <button id="btnGoHome" class="btn btn-outline">Go Home</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ADSENSE CONTAINER (Bottom Section, hidden in active game) -->
+    <div id="adsenseSection" class="adsense-container">
+      <div class="adsense-label">Advertisement</div>
+      <div class="adsense-box">
+        <!-- AdSense Tag -->
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-1234567890123456"
+             data-ad-slot="1234567890"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+          (window.adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+        
+        <!-- Premium Fallback Sketch Doodle Ad -->
+        <div class="adsense-placeholder">
+          <div class="adsense-doodle">✏️ Play More!</div>
+          <span style="font-size: 0.9rem;">Try "Grid Battles" & "Labyrinth Notebook"</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Socket.io client -->
+  <script src="/socket.io/socket.io.js"></script>
+  
+  <script>
+    // Client Game Variables
+    const socket = io();
+    let myId = null;
+    let roomCode = null;
+    let myName = '';
+    let players = [];
+    let isHost = false;
+    let myRole = null; // 'caller' | 'searcher'
+    let currentSettings = { tallySize: 3, numRange: '1-30' };
+    let currentSeed = '';
+    let currentNumber = null;
+    let tapScore = 0;
+    let opponentScore = 0;
+    
+    // Tally cell state trackers
+    let boxTapStates = []; 
+    let totalTargetTaps = 9;
+    
+    // Ink refill tracker
+    let inkLevel = 15;
+
+    // DOM Elements
+    const screenHome = document.getElementById('screenHome');
+    const screenLobby = document.getElementById('screenLobby');
+    const screenGame = document.getElementById('screenGame');
+    const screenWinner = document.getElementById('screenWinner');
+    const adsenseSection = document.getElementById('adsenseSection');
+    const errorToast = document.getElementById('errorToast');
+
+    // Home Elements
+    const inputPlayerName = document.getElementById('inputPlayerName');
+    const btnCreateRoom = document.getElementById('btnCreateRoom');
+    const btnJoinRoomToggle = document.getElementById('btnJoinRoomToggle');
+    const joinCodeContainer = document.getElementById('joinCodeContainer');
+    const inputRoomCode = document.getElementById('inputRoomCode');
+    const btnSubmitJoin = document.getElementById('btnSubmitJoin');
+
+    // Lobby Elements
+    const labelRoomCode = document.getElementById('labelRoomCode');
+    const btnCopyCode = document.getElementById('btnCopyCode');
+    const lobbyPlayersList = document.getElementById('lobbyPlayersList');
+    const hostSettings = document.getElementById('hostSettings');
+    const guestSettings = document.getElementById('guestSettings');
+    const guestLabelTallySize = document.getElementById('guestLabelTallySize');
+    const guestLabelNumRange = document.getElementById('guestLabelNumRange');
+    const btnStartGame = document.getElementById('btnStartGame');
+    const optionsTallySize = document.getElementById('optionsTallySize');
+    const optionsNumRange = document.getElementById('optionsNumRange');
+
+    // Game Elements
+    const hudRoleBadge = document.getElementById('hudRoleBadge');
+    const scorePlayer = document.getElementById('scorePlayer');
+    const scoreOpponent = document.getElementById('scoreOpponent');
+    const viewCaller = document.getElementById('viewCaller');
+    const viewSearcher = document.getElementById('viewSearcher');
+    
+    // Caller Elements
+    const inputCallNumber = document.getElementById('inputCallNumber');
+    const btnSubmitCall = document.getElementById('btnSubmitCall');
+    const msgCalledConfirmation = document.getElementById('msgCalledConfirmation');
+    const tallyGrid = document.getElementById('tallyGrid');
+    const tallyLockOverlay = document.getElementById('tallyLockOverlay');
+    const tallyInstructions = document.getElementById('tallyInstructions');
+    const inkwellBottle = document.getElementById('inkwellBottle');
+    const inkProgress = document.getElementById('inkProgress');
+    const labelInkLevel = document.getElementById('labelInkLevel');
+
+    // Searcher Elements
+    const hudFindNumber = document.getElementById('hudFindNumber');
+    const numberPageBoard = document.getElementById('numberPageBoard');
+    const numberPageScroll = document.getElementById('numberPageScroll');
+
+    // Winner Elements
+    const winnerLabel = document.getElementById('winnerLabel');
+    const winnerNameDisplay = document.getElementById('winnerNameDisplay');
+    const btnPlayAgain = document.getElementById('btnPlayAgain');
+    const btnGoHome = document.getElementById('btnGoHome');
+
+    // Randomize initial guest name
+    inputPlayerName.value = 'Player_' + Math.floor(Math.random() * 900 + 100);
+
+    // Navigation Helper
+    function showScreen(screen) {
+      screenHome.classList.add('hidden');
+      screenLobby.classList.add('hidden');
+      screenGame.classList.add('hidden');
+      screenWinner.classList.add('hidden');
+      adsenseSection.classList.remove('hidden');
+
+      if (screen === 'home') {
+        screenHome.classList.remove('hidden');
+      } else if (screen === 'lobby') {
+        screenLobby.classList.remove('hidden');
+      } else if (screen === 'game') {
+        screenGame.classList.remove('hidden');
+        adsenseSection.classList.add('hidden'); // Hide Ads during active gameplay
+      } else if (screen === 'winner') {
+        screenWinner.classList.remove('hidden');
+      }
+    }
+
+    // Toast Notification System
+    let toastTimeout;
+    function showError(msg) {
+      errorToast.innerText = msg;
+      errorToast.classList.add('show');
+      clearTimeout(toastTimeout);
+      toastTimeout = setTimeout(() => {
+        errorToast.classList.remove('show');
+      }, 3500);
+    }
+
+    // Copy room code
+    btnCopyCode.addEventListener('click', () => {
+      navigator.clipboard.writeText(roomCode).then(() => {
+        btnCopyCode.innerText = 'Copied!';
+        setTimeout(() => { btnCopyCode.innerText = 'Copy'; }, 2000);
+      }).catch(err => {
+        showError('Failed to copy room code.');
+      });
+    });
+
+    // Toggle Join room code input
+    btnJoinRoomToggle.addEventListener('click', () => {
+      joinCodeContainer.classList.toggle('hidden');
+      if (!joinCodeContainer.classList.contains('hidden')) {
+        inputRoomCode.focus();
+      }
+    });
+
+    // Create Room Trigger
+    btnCreateRoom.addEventListener('click', () => {
+      myName = inputPlayerName.value.trim();
+      if (!myName) return showError('Please enter your name.');
+      socket.emit('join_room', { code: '', playerName: myName });
+    });
+
+    // Join Room Trigger
+    btnSubmitJoin.addEventListener('click', () => {
+      myName = inputPlayerName.value.trim();
+      const code = inputRoomCode.value.trim();
+      if (!myName) return showError('Please enter your name.');
+      if (code.length !== 4) return showError('Room code must be exactly 4 letters.');
+      socket.emit('join_room', { code: code, playerName: myName });
+    });
+
+    // Host Settings triggers
+    function registerSettingsListeners() {
+      optionsTallySize.querySelectorAll('.option-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          optionsTallySize.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+          e.target.classList.add('selected');
+          sendSettingsUpdate();
+        });
+      });
+
+      optionsNumRange.querySelectorAll('.option-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          optionsNumRange.querySelectorAll('.option-btn').forEach(b => b.classList.remove('selected'));
+          e.target.classList.add('selected');
+          sendSettingsUpdate();
+        });
+      });
+    }
+    registerSettingsListeners();
+
+    function sendSettingsUpdate() {
+      if (!isHost) return;
+      const sizeVal = optionsTallySize.querySelector('.option-btn.selected').dataset.value;
+      const rangeVal = optionsNumRange.querySelector('.option-btn.selected').dataset.value;
+      socket.emit('settings_update', { tallySize: sizeVal, numRange: rangeVal });
+    }
+
+    // Start Game Trigger
+    btnStartGame.addEventListener('click', () => {
+      if (!isHost) return;
+      socket.emit('game_start');
+    });
+
+    // Socket Event: Room Joined
+    socket.on('room_joined', ({ code, settings, players: currentPlayers, myId: assignedId }) => {
+      myId = assignedId;
+      roomCode = code;
+      currentSettings = settings;
+      players = currentPlayers;
+      
+      labelRoomCode.innerText = code;
+      isHost = (players[0] && players[0].id === myId);
+      
+      if (isHost) {
+        hostSettings.classList.remove('hidden');
+        guestSettings.classList.add('hidden');
+      } else {
+        hostSettings.classList.add('hidden');
+        guestSettings.classList.remove('hidden');
+        updateGuestSettingsView(settings);
+      }
+
+      showScreen('lobby');
+      updateLobbyPlayersList();
+    });
+
+    // Socket Event: Players list update
+    socket.on('player_joined', ({ players: currentPlayers }) => {
+      players = currentPlayers;
+      isHost = (players[0] && players[0].id === myId);
+
+      updateLobbyPlayersList();
+
+      if (isHost) {
+        btnStartGame.classList.remove('hidden');
+        if (players.length >= 2) {
+          btnStartGame.disabled = false;
+          btnStartGame.innerText = 'Start Hunt!';
+        } else {
+          btnStartGame.disabled = true;
+          btnStartGame.innerText = 'Waiting for Players...';
+        }
+      } else {
+        btnStartGame.classList.add('hidden');
+      }
+    });
+
+    function updateGuestSettingsView(settings) {
+      guestLabelTallySize.innerText = `${settings.tallySize}x${settings.tallySize}`;
+      guestLabelNumRange.innerText = settings.numRange;
+    }
+
+    function updateLobbyPlayersList() {
+      lobbyPlayersList.innerHTML = '';
+      players.forEach((p, index) => {
+        const row = document.createElement('div');
+        row.className = 'player-row';
+        
+        const isSelf = p.id === myId;
+        const isPlayerHost = index === 0;
+
+        row.innerHTML = `
+          <div class="player-name">
+            <span>${p.name} ${isSelf ? '<strong>(You)</strong>' : ''}</span>
+            ${isPlayerHost ? '<span class="badge badge-host">Host</span>' : ''}
+          </div>
+          <div>
+            <span class="badge ${p.ready ? 'badge-ready' : ''}">${p.ready ? 'Connected' : 'Waiting...'}</span>
+          </div>
+        `;
+        lobbyPlayersList.appendChild(row);
+      });
+    }
+
+    // Socket Event: Settings Updated
+    socket.on('settings_update', (settings) => {
+      currentSettings = settings;
+      if (!isHost) {
+        updateGuestSettingsView(settings);
+        optionsTallySize.querySelectorAll('.option-btn').forEach(btn => {
+          btn.classList.toggle('selected', btn.dataset.value == settings.tallySize);
+        });
+        optionsNumRange.querySelectorAll('.option-btn').forEach(btn => {
+          btn.classList.toggle('selected', btn.dataset.value === settings.numRange);
+        });
+      }
+    });
+
+    // Seeded Random Engines
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      }
+    }
+
+    function cyrb128(str) {
+      let h1 = 1779033703, h2 = 302473254, h3 = 336245363, h4 = 502493819;
+      for (let i = 0, k; i < str.length; i++) {
+        k = str.charCodeAt(i);
+        h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
+        h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
+        h3 = h4 ^ Math.imul(h4 ^ k, 951274213);
+        h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
+      }
+      h1 = Math.imul(h3 ^ (h1 >>> 18), 597399067);
+      h2 = Math.imul(h4 ^ (h2 >>> 22), 2869860233);
+      h3 = Math.imul(h1 ^ (h3 >>> 17), 951274213);
+      h4 = Math.imul(h2 ^ (h4 >>> 19), 2716044179);
+      return [(h1^h2^h3^h4)>>>0];
+    }
+
+    // Seeded generator of grid obstacles (blocked cells)
+    function getBlockedBoxes(seedStr, size) {
+      const total = size * size;
+      if (size <= 5) return new Set(); // no obstacles for small grids
+      
+      const seedVal = cyrb128(seedStr)[0];
+      const rand = mulberry32(seedVal);
+      
+      const count = Math.floor(total * 0.1); // 10% blocked
+      const blocked = new Set();
+      
+      while (blocked.size < count) {
+        const idx = Math.floor(rand() * total);
+        blocked.add(idx);
+      }
+      return blocked;
+    }
+
+    // Seeded generator of double-tap cells
+    function getDoubleTapBoxes(seedStr, size, blockedSet) {
+      const total = size * size;
+      if (size <= 5) return new Set(); // no double tap for small grids
+      
+      const seedVal = cyrb128(seedStr + '-double')[0];
+      const rand = mulberry32(seedVal);
+      
+      const count = Math.floor(total * 0.15); // 15% double tap
+      const doubleTaps = new Set();
+      
+      while (doubleTaps.size < count) {
+        const idx = Math.floor(rand() * total);
+        if (!blockedSet.has(idx)) {
+          doubleTaps.add(idx);
+        }
+      }
+      return doubleTaps;
+    }
+
+    // Scattered positions layouts with visual camouflage
+    function generateScatteredLayout(seedStr, rangeStr) {
+      const parts = rangeStr.split('-');
+      const min = parseInt(parts[0], 10);
+      const max = parseInt(parts[1], 10);
+      const rangeLength = max - min + 1;
+      
+      const seedVal = cyrb128(seedStr)[0];
+      const rand = mulberry32(seedVal);
+
+      // Collect target numbers
+      const items = [];
+      for (let i = min; i <= max; i++) {
+        // 25% are faint camo numbers
+        items.push({
+          type: 'number',
+          val: i,
+          isFaint: rand() < 0.25
+        });
+      }
+
+      // Add decoy numbers outside active range (35% density count)
+      const decoyCount = Math.floor(rangeLength * 0.35) + 5;
+      for (let i = 0; i < decoyCount; i++) {
+        const decoyVal = max + 1 + Math.floor(rand() * 100);
+        items.push({
+          type: 'decoy',
+          val: decoyVal,
+          isFaint: rand() < 0.3
+        });
+      }
+
+      // Add doodle symbols for visual distractions/camo
+      const doodles = ['×', '○', '?', '✏️', '〰️', '✱', '✦', '▲', '⚡'];
+      const doodleCount = Math.floor(rangeLength * 0.4) + 10;
+      for (let i = 0; i < doodleCount; i++) {
+        const symbol = doodles[Math.floor(rand() * doodles.length)];
+        items.push({
+          type: 'doodle',
+          val: symbol,
+          isFaint: rand() < 0.4
+        });
+      }
+
+      const boardWidth = 600;
+      // Scroll height expanded for larger number ranges
+      const boardHeight = rangeLength > 50 ? 1800 : 1200;
+      const padding = 60;
+      const placedList = [];
+
+      for (let item of items) {
+        let x = 0;
+        let y = 0;
+        let attempts = 0;
+        let minDistance = 50;
+
+        while (true) {
+          x = padding + rand() * (boardWidth - 2 * padding);
+          y = padding + rand() * (boardHeight - 2 * padding);
+
+          let collision = false;
+          for (let other of placedList) {
+            const dx = x - other.x;
+            const dy = y - other.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist < minDistance) {
+              collision = true;
+              break;
+            }
+          }
+
+          if (!collision) {
+            break;
+          }
+
+          attempts++;
+          if (attempts >= 20) {
+            minDistance = Math.max(15, minDistance - 5);
+            attempts = 0;
+          }
+        }
+
+        const size = 1.1 + rand() * 1.0; // 1.1rem to 2.1rem
+        const rotation = -20 + rand() * 40; // -20deg to +20deg
+
+        placedList.push({
+          type: item.type,
+          val: item.val,
+          isFaint: item.isFaint,
+          x, y, size, rotation
+        });
+      }
+
+      return { layout: placedList, boardHeight };
+    }
+
+    // Render numbers canvas
+    function buildScatteredPage(seed, numRange) {
+      numberPageBoard.innerHTML = '';
+      const { layout, boardHeight } = generateScatteredLayout(seed, numRange);
+      
+      numberPageBoard.style.height = `${boardHeight}px`;
+
+      layout.forEach(item => {
+        const span = document.createElement('span');
+        span.className = 'scattered-num';
+        span.innerText = item.val;
+        span.style.left = `${item.x}px`;
+        span.style.top = `${item.y}px`;
+        span.style.fontSize = `${item.size}rem`;
+        span.style.transform = `rotate(${item.rotation}deg)`;
+        
+        if (item.isFaint) {
+          span.classList.add('faint');
+        }
+
+        if (item.type === 'doodle') {
+          span.classList.add('doodle');
+        } else {
+          // Playable numbers and decoys
+          span.addEventListener('click', () => {
+            if (myRole !== 'searcher') return;
+            if (currentNumber === null) return;
+
+            if (item.type === 'number' && item.val === currentNumber) {
+              // Found correct!
+              socket.emit('number_found');
+            } else {
+              // Shake wiggle feedback for wrong taps
+              span.style.color = 'var(--ink-red)';
+              span.style.transition = 'transform 0.05s';
+              span.style.transform = `rotate(${item.rotation}deg) scale(1.35)`;
+              
+              setTimeout(() => {
+                span.style.color = item.isFaint ? 'var(--pencil-gray)' : 'var(--pencil-lead)';
+                span.style.transform = `rotate(${item.rotation}deg) scale(1)`;
+              }, 300);
+            }
+          });
+        }
+
+        numberPageBoard.appendChild(span);
+      });
+    }
+
+    // Build the dynamic tally board and size-responsive cells
+    function buildTallyGrid(size, seed) {
+      tallyGrid.innerHTML = '';
+      tallyGrid.style.gridTemplateColumns = `repeat(${size}, 1fr)`;
+      
+      const total = size * size;
+      const blocked = getBlockedBoxes(seed, size);
+      const doubleTaps = getDoubleTapBoxes(seed, size, blocked);
+      totalTargetTaps = (total - blocked.size) + doubleTaps.size;
+
+      // Calculate cell sizes based on grid density to fit inside margins
+      const maxContainerWidth = 320; 
+      const calculatedCellSize = Math.max(22, Math.min(65, Math.floor(maxContainerWidth / size)));
+
+      // Initialize cell trackers
+      boxTapStates = [];
+
+      for (let i = 0; i < total; i++) {
+        const box = document.createElement('div');
+        box.className = 'tally-box';
+        box.style.width = `${calculatedCellSize}px`;
+        box.style.height = `${calculatedCellSize}px`;
+        box.dataset.index = i;
+        
+        let cellType = 'normal';
+        if (blocked.has(i)) {
+          cellType = 'blocked';
+          box.classList.add('blocked');
+        } else if (doubleTaps.has(i)) {
+          cellType = 'double';
+          box.classList.add('double-tap');
+        }
+
+        boxTapStates.push({
+          index: i,
+          type: cellType,
+          taps: 0
+        });
+
+        // Add ink splash element inside box
+        const splash = document.createElement('div');
+        splash.className = 'ink-splash';
+        box.appendChild(splash);
+
+        box.addEventListener('click', () => {
+          if (myRole !== 'caller') return;
+          if (!tallyLockOverlay.classList.contains('hidden')) return; // locked
+          
+          const state = boxTapStates[i];
+          if (state.type === 'blocked') return;
+          if (state.type === 'normal' && state.taps >= 1) return;
+          if (state.type === 'double' && state.taps >= 2) return;
+
+          // Ink Refill Check
+          if (inkLevel <= 0) {
+            inkwellBottle.classList.add('shake-warn');
+            showError('Pen is dry! Click the Inkwell to Refill!');
+            return;
+          }
+
+          // Consume Ink
+          inkLevel--;
+          updateInkwellUI();
+
+          // Increment Taps state
+          state.taps++;
+
+          if (state.type === 'double') {
+            if (state.taps === 1) {
+              box.classList.add('half-filled');
+            } else if (state.taps === 2) {
+              box.classList.remove('half-filled');
+              box.classList.add('filled');
+            }
+          } else {
+            box.classList.add('filled');
+          }
+
+          socket.emit('tally_tap');
+        });
+
+        tallyGrid.appendChild(box);
+      }
+
+      // Sync tally title instructions
+      if (size > 5) {
+        tallyInstructions.innerHTML = `⚠️ Obstacles <span style="background:#e5e5e5; padding:0 3px; border:1px solid #7a7a7a">||||</span> are blocked. Double-border cells <span style="border:2px double #333; padding:0 3px;">&square;</span> require 2 taps!`;
+      } else {
+        tallyInstructions.innerText = 'Tap as fast as possible to fill all boxes!';
+      }
+    }
+
+    // Update Ink progress bar
+    function updateInkwellUI() {
+      labelInkLevel.innerText = inkLevel;
+      const percent = (inkLevel / 15) * 100;
+      inkProgress.style.width = `${percent}%`;
+
+      if (inkLevel <= 0) {
+        inkwellBottle.classList.add('shake-warn');
+        inkProgress.style.backgroundColor = 'var(--ink-red)';
+      } else {
+        inkwellBottle.classList.remove('shake-warn');
+        inkProgress.style.backgroundColor = 'var(--ink-blue)';
+      }
+    }
+
+    // Refill ink clicks
+    inkwellBottle.addEventListener('click', refillInkPen);
+    function refillInkPen() {
+      if (inkLevel === 15) return;
+      
+      // Spin animation trigger
+      inkwellBottle.style.transform = 'rotate(360deg) scale(1.2)';
+      setTimeout(() => {
+        inkwellBottle.style.transform = 'none';
+      }, 300);
+
+      inkLevel = 15;
+      updateInkwellUI();
+    }
+
+    // Socket Event: Game Start / Reset Game
+    function initializeGameScreen({ seed, settings, firstCaller }) {
+      currentSeed = seed;
+      currentSettings = settings;
+      currentNumber = null;
+      
+      // Reset ink
+      inkLevel = 15;
+      updateInkwellUI();
+
+      // Determine initial roles
+      myRole = (firstCaller === myId) ? 'caller' : 'searcher';
+      
+      // Populate structures
+      buildTallyGrid(settings.tallySize, seed);
+      buildScatteredPage(seed, settings.numRange);
+
+      // Set HUD Scores
+      tapScore = 0;
+      opponentScore = 0;
+      scorePlayer.innerText = `0 / ${totalTargetTaps}`;
+      scoreOpponent.innerText = `0 / ${totalTargetTaps}`;
+
+      // Reset panels
+      inputCallNumber.value = '';
+      msgCalledConfirmation.classList.add('hidden');
+      btnSubmitCall.disabled = false;
+      inputCallNumber.disabled = false;
+      tallyLockOverlay.classList.add('hidden');
+
+      updateGameLayoutRoles();
+      showScreen('game');
+    }
+
+    socket.on('game_start', initializeGameScreen);
+    socket.on('reset_game', initializeGameScreen);
+
+    // Update layout roles
+    function updateGameLayoutRoles() {
+      if (myRole === 'caller') {
+        hudRoleBadge.innerText = 'Role: Caller';
+        hudRoleBadge.className = 'role-badge role-caller';
+        viewCaller.classList.remove('hidden');
+        viewSearcher.classList.add('hidden');
+
+        // Tally locked until caller chooses a number
+        if (currentNumber === null) {
+          tallyLockOverlay.classList.remove('hidden');
+          tallyLockOverlay.innerText = 'Call a number first!';
+          btnSubmitCall.disabled = false;
+          inputCallNumber.disabled = false;
+          inputCallNumber.focus();
+        } else {
+          tallyLockOverlay.classList.add('hidden');
+          btnSubmitCall.disabled = true;
+          inputCallNumber.disabled = true;
+        }
+      } else {
+        hudRoleBadge.innerText = 'Role: Searcher';
+        hudRoleBadge.className = 'role-badge role-searcher';
+        viewCaller.classList.add('hidden');
+        viewSearcher.classList.remove('hidden');
+
+        if (currentNumber === null) {
+          hudFindNumber.innerText = 'Waiting for Call...';
+        } else {
+          hudFindNumber.innerText = `Find: ${currentNumber}!`;
+        }
+      }
+
+      // Update scores HUD
+      scorePlayer.innerText = `${tapScore} / ${totalTargetTaps}`;
+      scoreOpponent.innerText = `${opponentScore} / ${totalTargetTaps}`;
+    }
+
+    // Call submit
+    btnSubmitCall.addEventListener('click', submitNumberCall);
+    inputCallNumber.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') submitNumberCall();
+    });
+
+    function submitNumberCall() {
+      if (myRole !== 'caller') return;
+      const numStr = inputCallNumber.value.trim();
+      const num = parseInt(numStr, 10);
+      
+      if (isNaN(num)) return showError('Please type a valid number.');
+      socket.emit('number_called', { number: num });
+    }
+
+    // Socket Event: Number Announced
+    socket.on('number_announced', ({ number }) => {
+      currentNumber = number;
+
+      if (myRole === 'caller') {
+        msgCalledConfirmation.innerText = `You called: ${number}!`;
+        msgCalledConfirmation.classList.remove('hidden');
+        
+        btnSubmitCall.disabled = true;
+        inputCallNumber.disabled = true;
+        tallyLockOverlay.classList.add('hidden');
+      } else {
+        hudFindNumber.innerText = `Find: ${number}!`;
+        hudFindNumber.style.animation = 'none';
+        void hudFindNumber.offsetWidth;
+        hudFindNumber.style.animation = null;
+        
+        // Auto scroll Searcher viewport back to top/left coordinates center
+        numberPageScroll.scrollLeft = 0;
+        numberPageScroll.scrollTop = 0;
+      }
+    });
+
+    // Socket Event: Tapping Locked
+    socket.on('tapping_locked', () => {
+      if (myRole === 'caller') {
+        tallyLockOverlay.classList.remove('hidden');
+        tallyLockOverlay.innerText = 'Role Swapped!';
+      }
+      
+      showError('Number found! Swapping roles...');
+
+      setTimeout(() => {
+        myRole = (myRole === 'caller') ? 'searcher' : 'caller';
+        currentNumber = null;
+        
+        inputCallNumber.value = '';
+        msgCalledConfirmation.classList.add('hidden');
+
+        updateGameLayoutRoles();
+      }, 1500);
+    });
+
+    // Socket Event: Tally Scores Updated
+    socket.on('tally_update', ({ playerId, filled }) => {
+      if (playerId === myId) {
+        tapScore = filled;
+        scorePlayer.innerText = `${tapScore} / ${totalTargetTaps}`;
+        
+        // Safety sync local boxes visually
+        const boxes = tallyGrid.querySelectorAll('.tally-box');
+        let indexFilledCount = 0;
+        
+        boxTapStates.forEach((state, i) => {
+          if (state.type === 'blocked') return;
+          
+          if (indexFilledCount < filled) {
+            if (state.type === 'double') {
+              if (state.taps === 0) {
+                state.taps = 1;
+                boxes[i].classList.add('half-filled');
+                indexFilledCount++;
+              }
+              if (indexFilledCount < filled && state.taps === 1) {
+                state.taps = 2;
+                boxes[i].classList.remove('half-filled');
+                boxes[i].classList.add('filled');
+                indexFilledCount++;
+              }
+            } else {
+              if (state.taps === 0) {
+                state.taps = 1;
+                boxes[i].classList.add('filled');
+                indexFilledCount++;
+              }
+            }
+          }
+        });
+      } else {
+        opponentScore = filled;
+        scoreOpponent.innerText = `${opponentScore} / ${totalTargetTaps}`;
+      }
+    });
+
+    // Socket Event: Game Over
+    socket.on('game_over', ({ winnerId, winnerName }) => {
+      tallyLockOverlay.classList.remove('hidden');
+      tallyLockOverlay.innerText = 'Game Over';
+      
+      setTimeout(() => {
+        winnerNameDisplay.innerText = winnerName;
+        
+        if (winnerId === myId) {
+          winnerLabel.innerText = 'Victory!';
+          winnerLabel.style.color = 'var(--ink-blue)';
+          
+          // Confetti explosion
+          const duration = 3 * 1000;
+          const end = Date.now() + duration;
+
+          (function frame() {
+            confetti({
+              particleCount: 3,
+              angle: 60,
+              spread: 55,
+              origin: { x: 0 }
+            });
+            confetti({
+              particleCount: 3,
+              angle: 120,
+              spread: 55,
+              origin: { x: 1 }
+            });
+
+            if (Date.now() < end) {
+              requestAnimationFrame(frame);
+            }
+          }());
+        } else {
+          winnerLabel.innerText = 'Defeat!';
+          winnerLabel.style.color = 'var(--ink-red)';
+        }
+
+        if (isHost) {
+          btnPlayAgain.classList.remove('hidden');
+          btnPlayAgain.innerText = 'Play Again';
+        } else {
+          btnPlayAgain.classList.add('hidden');
+        }
+
+        showScreen('winner');
+      }, 1000);
+    });
+
+    // Play Again (Host Only)
+    btnPlayAgain.addEventListener('click', () => {
+      if (!isHost) return;
+      socket.emit('play_again');
+    });
+
+    // Go Home
+    btnGoHome.addEventListener('click', () => {
+      window.location.reload();
+    });
+
+    // Opponent left
+    socket.on('opponent_left', () => {
+      showError('Opponent disconnected. Returning to lobby...');
+      setTimeout(() => {
+        showScreen('lobby');
+      }, 2500);
+    });
+
+    // Error messages from server
+    socket.on('error_message', (msg) => {
+      showError(msg);
+    });
+  </script>
+</body>
+</html>

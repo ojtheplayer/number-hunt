@@ -1,0 +1,21 @@
+{
+  "name": "number-hunt",
+  "version": "1.0.0",
+  "description": "Real-time two-player web game called Number Hunt",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "multiplayer",
+    "socket.io",
+    "express",
+    "game"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  }
+}
