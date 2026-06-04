@@ -90,30 +90,132 @@ function getDoubleTapBoxes(seedStr, size, blockedSet) {
   return doubleTaps;
 }
 
+// Helper: get connected players count
+function connectedCount(room) {
+  return room.players.filter(p => p.connected).length;
+}
+
+// Helper: perform role swap
+function swapRoles(room) {
+  const prevCaller = room.currentCaller;
+  room.currentCaller = room.currentSearcher;
+  room.currentSearcher = prevCaller;
+  room.players.forEach(p => {
+    p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
+  });
+}
+
 io.on('connection', (socket) => {
   console.log(`Player connected: ${socket.id}`);
 
   // Cache room and player info on socket object
   socket.roomId = null;
   socket.playerName = '';
+  socket.persistentId = null;
 
-  // 1. Join / Create Room
-  socket.on('join_room', ({ code, playerName }) => {
+  // 1. Join / Create Room (also handles rejoin by persistentId)
+  socket.on('join_room', ({ code, playerName, persistentId }) => {
     let cleanName = (playerName || 'Player').trim().substring(0, 20);
     if (!cleanName) cleanName = 'Player';
 
     let roomCode = code ? code.trim().toUpperCase() : null;
     let room;
 
+    // --- REJOIN PATH ---
+    if (roomCode && persistentId) {
+      room = rooms.get(roomCode);
+      if (room) {
+        const disconnectedPlayer = room.players.find(
+          p => p.persistentId === persistentId && !p.connected
+        );
+        if (disconnectedPlayer) {
+          // Cancel the forfeit timeout
+          if (disconnectedPlayer.reconnectTimeout) {
+            clearTimeout(disconnectedPlayer.reconnectTimeout);
+            disconnectedPlayer.reconnectTimeout = null;
+          }
+
+          // Reassign the socket to this player
+          const oldId = disconnectedPlayer.id;
+          disconnectedPlayer.id = socket.id;
+          disconnectedPlayer.connected = true;
+
+          // Update currentCaller/Searcher if this player held those roles
+          if (room.currentCaller === oldId) room.currentCaller = socket.id;
+          if (room.currentSearcher === oldId) room.currentSearcher = socket.id;
+
+          socket.join(roomCode);
+          socket.roomId = roomCode;
+          socket.playerName = disconnectedPlayer.name;
+          socket.persistentId = persistentId;
+
+          // Build tapped state snapshot for the rejoining player
+          const blocked = room.state === 'playing' || room.state === 'paused'
+            ? getBlockedBoxes(room.seed, room.settings.tallySize) : new Set();
+          const doubleTaps = room.state === 'playing' || room.state === 'paused'
+            ? getDoubleTapBoxes(room.seed, room.settings.tallySize, blocked) : new Set();
+
+          socket.emit('game_rejoined', {
+            myId: socket.id,
+            players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score, role: p.role, connected: p.connected })),
+            roomCode,
+            state: room.state,
+            seed: room.seed,
+            settings: room.settings,
+            currentCaller: room.currentCaller,
+            currentNumber: room.currentNumber,
+            tappingLocked: room.tappingLocked,
+            paused: room.paused,
+            pausedBy: room.pausedBy,
+            myTappedBoxes: disconnectedPlayer.tappedBoxes,
+            bonusTimeRemaining: room.bonusTimeRemaining || 0
+          });
+
+          // Notify the other player that their opponent is back
+          socket.to(roomCode).emit('opponent_reconnected', {
+            players: room.players.map(p => ({ id: p.id, name: p.name, score: p.score, role: p.role, connected: p.connected }))
+          });
+
+          // Auto-resume if game was paused only because of this disconnect
+          if (room.paused && room.pausedByDisconnect) {
+            room.paused = false;
+            room.pausedByDisconnect = false;
+            room.pausedBy = null;
+
+            // Restore bonus timeout if needed
+            if (room.bonusTimeRemaining > 0) {
+              const remaining = room.bonusTimeRemaining;
+              room.bonusTimeRemaining = 0;
+              io.to(roomCode).emit('game_resumed', { bonusTimeRemaining: remaining });
+
+              room.bonusTimeout = setTimeout(() => {
+                room.bonusTimeout = null;
+                room.tappingLocked = true;
+                io.to(roomCode).emit('tapping_locked', { reason: 'Bonus time over!' });
+                swapRoles(room);
+                room.currentNumber = null;
+                console.log(`Bonus period ended in room ${roomCode}. Roles switched.`);
+              }, remaining);
+            } else {
+              io.to(roomCode).emit('game_resumed', { bonusTimeRemaining: 0 });
+            }
+          }
+
+          console.log(`Player ${disconnectedPlayer.name} rejoined room ${roomCode}`);
+          return;
+        }
+      }
+    }
+
+    // --- CREATE ROOM PATH ---
     if (!roomCode) {
-      // Create Room
       roomCode = generateRoomCode();
       room = {
         code: roomCode,
         players: [],
         settings: {
-          tallySize: 3, // 3, 4, 5, 8, 10, 14
-          numRange: '1-30' // 1-30, 1-50, 1-99, 1-150, 1-200
+          tallySize: 3,
+          numRange: '1-30'
         },
         state: 'lobby',
         seed: '',
@@ -121,17 +223,24 @@ io.on('connection', (socket) => {
         currentSearcher: null,
         currentNumber: null,
         numbersCalled: [],
-        tappingLocked: true
+        tappingLocked: true,
+        paused: false,
+        pausedBy: null,
+        pausedByDisconnect: false,
+        bonusTimeRemaining: 0,
+        bonusTimeout: null
       };
       rooms.set(roomCode, room);
       console.log(`Room created: ${roomCode}`);
     } else {
-      // Join Room
+      // --- JOIN EXISTING ROOM PATH ---
       room = rooms.get(roomCode);
       if (!room) {
         return socket.emit('error_message', 'Room not found.');
       }
-      if (room.players.length >= 2) {
+
+      const connectedPlayers = room.players.filter(p => p.connected);
+      if (connectedPlayers.length >= 2) {
         return socket.emit('error_message', 'Room is full.');
       }
       if (room.state !== 'lobby') {
@@ -143,14 +252,18 @@ io.on('connection', (socket) => {
     socket.join(roomCode);
     socket.roomId = roomCode;
     socket.playerName = cleanName;
+    socket.persistentId = persistentId || null;
 
     const player = {
       id: socket.id,
+      persistentId: persistentId || null,
       name: cleanName,
       ready: room.players.length === 0, // host is auto-ready
       score: 0,
       role: null,
-      tappedBoxes: []
+      tappedBoxes: [],
+      connected: true,
+      reconnectTimeout: null
     };
 
     room.players.push(player);
@@ -203,7 +316,7 @@ io.on('connection', (socket) => {
     // Only host can start game
     if (room.players[0] && room.players[0].id !== socket.id) return;
 
-    if (room.players.length < 2) {
+    if (room.players.filter(p => p.connected).length < 2) {
       return socket.emit('error_message', 'Need 2 players to start game.');
     }
 
@@ -219,11 +332,16 @@ io.on('connection', (socket) => {
     room.numbersCalled = [];
     room.currentNumber = null;
     room.tappingLocked = true;
+    room.paused = false;
+    room.pausedBy = null;
+    room.pausedByDisconnect = false;
+    room.bonusTimeRemaining = 0;
 
     // Select first caller randomly
+    const connectedPlayers = room.players.filter(p => p.connected);
     const firstCallerIndex = Math.floor(Math.random() * 2);
-    room.currentCaller = room.players[firstCallerIndex].id;
-    room.currentSearcher = room.players[1 - firstCallerIndex].id;
+    room.currentCaller = connectedPlayers[firstCallerIndex].id;
+    room.currentSearcher = connectedPlayers[1 - firstCallerIndex].id;
 
     room.players.forEach(p => {
       p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
@@ -244,6 +362,7 @@ io.on('connection', (socket) => {
 
     const room = rooms.get(roomCode);
     if (!room || room.state !== 'playing') return;
+    if (room.paused) return;
 
     // Verify it is the current caller calling
     if (socket.id !== room.currentCaller) return;
@@ -281,6 +400,7 @@ io.on('connection', (socket) => {
 
     const room = rooms.get(roomCode);
     if (!room || room.state !== 'playing') return;
+    if (room.paused) return;
 
     // Verify caller is tapping and tapping is unlocked
     if (socket.id !== room.currentCaller) return;
@@ -351,6 +471,7 @@ io.on('connection', (socket) => {
     const room = rooms.get(roomCode);
     if (!room || room.state !== 'playing') return;
     if (room.bonusTimeout) return; // ignore during give up bonus phase
+    if (room.paused) return;
 
     // Verify it is the Searcher who found the number
     if (socket.id !== room.currentSearcher) return;
@@ -361,14 +482,7 @@ io.on('connection', (socket) => {
     io.to(roomCode).emit('tapping_locked', { reason: 'Number found!' });
 
     // Switch roles
-    const prevCaller = room.currentCaller;
-    room.currentCaller = room.currentSearcher;
-    room.currentSearcher = prevCaller;
-
-    room.players.forEach(p => {
-      p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
-    });
-
+    swapRoles(room);
     room.currentNumber = null;
     console.log(`Number found in room ${roomCode}. Roles switched. New Caller: ${room.currentCaller}`);
   });
@@ -380,6 +494,7 @@ io.on('connection', (socket) => {
 
     const room = rooms.get(roomCode);
     if (!room || room.state !== 'playing') return;
+    if (room.paused) return;
 
     // Verify it is the Searcher giving up
     if (socket.id !== room.currentSearcher) return;
@@ -399,20 +514,79 @@ io.on('connection', (socket) => {
       io.to(roomCode).emit('tapping_locked', { reason: 'Bonus time over!' });
 
       // Switch roles
-      const prevCaller = room.currentCaller;
-      room.currentCaller = room.currentSearcher;
-      room.currentSearcher = prevCaller;
-
-      room.players.forEach(p => {
-        p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
-      });
-
+      swapRoles(room);
       room.currentNumber = null;
       console.log(`Bonus period ended in room ${roomCode}. Roles switched. New Caller: ${room.currentCaller}`);
     }, 5000);
   });
 
-  // 7. Play Again
+  // 7. Pause Game
+  socket.on('pause_game', () => {
+    const roomCode = socket.roomId;
+    if (!roomCode) return;
+
+    const room = rooms.get(roomCode);
+    if (!room || room.state !== 'playing') return;
+    if (room.paused) return;
+
+    room.paused = true;
+    room.pausedBy = socket.id;
+    room.pausedByDisconnect = false;
+
+    // Freeze bonus timeout if active
+    if (room.bonusTimeout) {
+      clearTimeout(room.bonusTimeout);
+      room.bonusTimeout = null;
+      // Store remaining time (approximate — 5s bonus, calculate how much is left)
+      room.bonusTimeRemaining = room.bonusTimeRemaining || 5000;
+    }
+
+    const pausingPlayer = room.players.find(p => p.id === socket.id);
+    io.to(roomCode).emit('game_paused', {
+      pausedBy: socket.id,
+      pausedByName: pausingPlayer ? pausingPlayer.name : 'Unknown'
+    });
+    console.log(`Game paused in room ${roomCode} by ${socket.id}`);
+  });
+
+  // 8. Resume Game
+  socket.on('resume_game', () => {
+    const roomCode = socket.roomId;
+    if (!roomCode) return;
+
+    const room = rooms.get(roomCode);
+    if (!room || !room.paused) return;
+
+    // Only the pauser or host can resume
+    const isHost = room.players[0] && room.players[0].id === socket.id;
+    if (socket.id !== room.pausedBy && !isHost) return;
+
+    room.paused = false;
+    room.pausedByDisconnect = false;
+    room.pausedBy = null;
+
+    // Restore bonus timeout if it was frozen mid-bonus
+    if (room.bonusTimeRemaining > 0) {
+      const remaining = room.bonusTimeRemaining;
+      room.bonusTimeRemaining = 0;
+      io.to(roomCode).emit('game_resumed', { bonusTimeRemaining: remaining });
+
+      room.bonusTimeout = setTimeout(() => {
+        room.bonusTimeout = null;
+        room.tappingLocked = true;
+        io.to(roomCode).emit('tapping_locked', { reason: 'Bonus time over!' });
+        swapRoles(room);
+        room.currentNumber = null;
+        console.log(`Bonus period ended in room ${roomCode}. Roles switched.`);
+      }, remaining);
+    } else {
+      io.to(roomCode).emit('game_resumed', { bonusTimeRemaining: 0 });
+    }
+
+    console.log(`Game resumed in room ${roomCode}`);
+  });
+
+  // 9. Play Again
   socket.on('play_again', () => {
     const roomCode = socket.roomId;
     if (!roomCode) return;
@@ -422,7 +596,7 @@ io.on('connection', (socket) => {
 
     // Only host can trigger restart
     if (room.players[0] && room.players[0].id !== socket.id) return;
-    if (room.players.length < 2) return;
+    if (room.players.filter(p => p.connected).length < 2) return;
 
     if (room.bonusTimeout) {
       clearTimeout(room.bonusTimeout);
@@ -440,11 +614,16 @@ io.on('connection', (socket) => {
     room.numbersCalled = [];
     room.currentNumber = null;
     room.tappingLocked = true;
+    room.paused = false;
+    room.pausedBy = null;
+    room.pausedByDisconnect = false;
+    room.bonusTimeRemaining = 0;
 
     // Randomize caller again
+    const connectedPlayers = room.players.filter(p => p.connected);
     const firstCallerIndex = Math.floor(Math.random() * 2);
-    room.currentCaller = room.players[firstCallerIndex].id;
-    room.currentSearcher = room.players[1 - firstCallerIndex].id;
+    room.currentCaller = connectedPlayers[firstCallerIndex].id;
+    room.currentSearcher = connectedPlayers[1 - firstCallerIndex].id;
 
     room.players.forEach(p => {
       p.role = (p.id === room.currentCaller) ? 'caller' : 'searcher';
@@ -458,34 +637,102 @@ io.on('connection', (socket) => {
     console.log(`Game reset in room ${roomCode}. Seed: ${room.seed}`);
   });
 
-  // 8. Disconnect
+  // 10. Disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
     const roomCode = socket.roomId;
-    if (roomCode) {
-      const room = rooms.get(roomCode);
-      if (room) {
-        // Remove player from room
-        room.players = room.players.filter(p => p.id !== socket.id);
+    if (!roomCode) return;
 
-        if (room.bonusTimeout) {
-          clearTimeout(room.bonusTimeout);
-          room.bonusTimeout = null;
-        }
+    const room = rooms.get(roomCode);
+    if (!room) return;
 
-        if (room.players.length === 0) {
-          // Delete empty room
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    // Mark as disconnected
+    player.connected = false;
+
+    const stillConnected = room.players.filter(p => p.connected);
+
+    if (stillConnected.length === 0) {
+      // Both disconnected — clean up bonus timeout and delete room after a delay
+      if (room.bonusTimeout) {
+        clearTimeout(room.bonusTimeout);
+        room.bonusTimeout = null;
+      }
+      // Give 60s for anyone to come back, then delete
+      setTimeout(() => {
+        if (rooms.has(roomCode) && connectedCount(rooms.get(roomCode)) === 0) {
           rooms.delete(roomCode);
-          console.log(`Room ${roomCode} deleted (empty)`);
-        } else {
-          // Notify remaining player, reset to lobby
-          room.state = 'lobby';
-          room.players[0].ready = true; // remaining player becomes host and ready
-
-          io.to(roomCode).emit('opponent_left');
-          io.to(roomCode).emit('player_joined', { players: room.players });
-          console.log(`Player left room ${roomCode}. Remaining player: ${room.players[0].name}`);
+          console.log(`Room ${roomCode} deleted (all players gone)`);
         }
+      }, 60000);
+      return;
+    }
+
+    // One player still connected
+    if (room.state === 'playing' || room.state === 'paused') {
+      // Freeze bonus timeout if active
+      if (room.bonusTimeout) {
+        clearTimeout(room.bonusTimeout);
+        room.bonusTimeout = null;
+        room.bonusTimeRemaining = room.bonusTimeRemaining || 5000;
+      }
+
+      // Auto-pause due to disconnect
+      room.paused = true;
+      room.pausedByDisconnect = true;
+      room.pausedBy = null;
+
+      // Notify the remaining player
+      io.to(roomCode).emit('opponent_disconnected', {
+        name: player.name,
+        reconnectWindowMs: 60000
+      });
+
+      // Start 60-second forfeit countdown
+      player.reconnectTimeout = setTimeout(() => {
+        player.reconnectTimeout = null;
+        // Player never came back — forfeit
+        const winner = room.players.find(p => p.connected);
+        if (winner) {
+          room.state = 'game_over';
+          if (room.bonusTimeout) {
+            clearTimeout(room.bonusTimeout);
+            room.bonusTimeout = null;
+          }
+          io.to(roomCode).emit('opponent_forfeited', {
+            winnerId: winner.id,
+            winnerName: winner.name,
+            forfeiterName: player.name
+          });
+          console.log(`${player.name} forfeited in room ${roomCode}. Winner: ${winner.name}`);
+        }
+        // Remove disconnected player from room
+        room.players = room.players.filter(p => p.id !== player.id);
+        if (room.players.length === 0) {
+          rooms.delete(roomCode);
+        }
+      }, 60000);
+
+    } else {
+      // In lobby or game_over — just remove immediately
+      room.players = room.players.filter(p => p.id !== socket.id);
+
+      if (room.bonusTimeout) {
+        clearTimeout(room.bonusTimeout);
+        room.bonusTimeout = null;
+      }
+
+      if (room.players.length === 0) {
+        rooms.delete(roomCode);
+        console.log(`Room ${roomCode} deleted (empty)`);
+      } else {
+        room.state = 'lobby';
+        room.players[0].ready = true;
+        io.to(roomCode).emit('opponent_left');
+        io.to(roomCode).emit('player_joined', { players: room.players });
+        console.log(`Player left room ${roomCode}. Remaining player: ${room.players[0].name}`);
       }
     }
   });

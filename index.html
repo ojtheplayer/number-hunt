@@ -849,6 +849,56 @@
       to { border-color: var(--ink-red); }
     }
 
+    /* Pause Button */
+    .btn-pause {
+      background: transparent;
+      border: 2px solid var(--pencil-gray);
+      color: var(--pencil-lead);
+      font-size: 1.3rem;
+      padding: 0.2rem 0.7rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: 'Patrick Hand', cursive;
+      transition: background 0.15s, color 0.15s;
+      line-height: 1;
+    }
+    .btn-pause:hover { background: var(--pencil-lead); color: #fff; }
+
+    /* Full-screen game overlays (pause / reconnect) */
+    .game-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(250, 248, 240, 0.97);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      text-align: center;
+      padding: 2rem;
+      animation: fadeIn 0.25s ease-out;
+    }
+    .game-overlay.hidden { display: none !important; }
+    .overlay-icon  { font-size: 4.5rem; margin-bottom: 0.5rem; }
+    .overlay-title {
+      font-family: 'Caveat', cursive;
+      font-size: 2.6rem;
+      color: var(--ink-blue);
+      margin-bottom: 0.4rem;
+    }
+    .overlay-sub {
+      font-size: 1.1rem;
+      color: var(--pencil-gray);
+      margin-bottom: 1.5rem;
+    }
+    .reconnect-countdown {
+      font-family: 'Caveat', cursive;
+      font-size: 5rem;
+      font-weight: bold;
+      color: var(--ink-red);
+      margin: 0.4rem 0 1rem;
+    }
+
     .scattered-num.giveup-reveal {
       background-color: var(--accent-yellow) !important;
       border: 3px dashed var(--ink-red) !important;
@@ -980,9 +1030,26 @@
 
       <!-- 3. GAME SCREEN -->
       <div id="screenGame" class="screen hidden">
+        <!-- Pause Overlay -->
+        <div id="pauseOverlay" class="game-overlay hidden">
+          <div class="overlay-icon">⏸️</div>
+          <div class="overlay-title">Game Paused</div>
+          <div id="pauseOverlaySub" class="overlay-sub">Paused by a player</div>
+          <button id="btnResumeGame" class="btn" style="width:220px;">▶ Resume Game</button>
+        </div>
+
+        <!-- Opponent Reconnect Overlay -->
+        <div id="reconnectOverlay" class="game-overlay hidden">
+          <div class="overlay-icon">📶</div>
+          <div class="overlay-title">Opponent Disconnected</div>
+          <div id="reconnectOverlaySub" class="overlay-sub">Waiting for them to reconnect...</div>
+          <div id="reconnectCountdown" class="reconnect-countdown">60</div>
+          <div class="overlay-sub">They have 60 seconds to come back, otherwise they forfeit.</div>
+        </div>
+
         <div class="game-hud">
           <div id="hudRoleBadge" class="role-badge role-caller">Caller</div>
-          <div id="hudTimer" style="font-size: 1.2rem; font-weight: bold;">Game Active</div>
+          <button id="btnPauseGame" class="btn-pause" title="Pause game">⏸ Pause</button>
         </div>
 
         <div class="scores-row">
@@ -1143,6 +1210,13 @@
     let giveUpCooldownInterval = null;
     let bonusCountdownInterval = null;
 
+    // Persistent session
+    let persistentId = localStorage.getItem('nhPlayerId');
+    if (!persistentId) {
+      persistentId = 'nh-' + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem('nhPlayerId', persistentId);
+    }
+
     // DOM Elements
     const screenHome = document.getElementById('screenHome');
     const screenLobby = document.getElementById('screenLobby');
@@ -1177,6 +1251,13 @@
     const scoreOpponent = document.getElementById('scoreOpponent');
     const viewCaller = document.getElementById('viewCaller');
     const viewSearcher = document.getElementById('viewSearcher');
+    const btnPauseGame = document.getElementById('btnPauseGame');
+    const pauseOverlay = document.getElementById('pauseOverlay');
+    const pauseOverlaySub = document.getElementById('pauseOverlaySub');
+    const btnResumeGame = document.getElementById('btnResumeGame');
+    const reconnectOverlay = document.getElementById('reconnectOverlay');
+    const reconnectOverlaySub = document.getElementById('reconnectOverlaySub');
+    const reconnectCountdown = document.getElementById('reconnectCountdown');
     
     // Caller Elements
     const inputCallNumber = document.getElementById('inputCallNumber');
@@ -1263,7 +1344,8 @@
     btnCreateRoom.addEventListener('click', () => {
       myName = inputPlayerName.value.trim();
       if (!myName) return showError('Please enter your name.');
-      socket.emit('join_room', { code: '', playerName: myName });
+      localStorage.removeItem('nhRoomCode');
+      socket.emit('join_room', { code: '', playerName: myName, persistentId });
     });
 
     // Join Room Trigger
@@ -1272,8 +1354,33 @@
       const code = inputRoomCode.value.trim();
       if (!myName) return showError('Please enter your name.');
       if (code.length !== 4) return showError('Room code must be exactly 4 letters.');
-      socket.emit('join_room', { code: code, playerName: myName });
+      localStorage.removeItem('nhRoomCode');
+      socket.emit('join_room', { code: code, playerName: myName, persistentId });
     });
+
+    // Auto-rejoin on page load if session exists
+    const savedRoomCode = localStorage.getItem('nhRoomCode');
+    if (savedRoomCode) {
+      // Show a brief reconnecting notice instead of home screen
+      screenHome.classList.add('hidden');
+      const rejoinNotice = document.createElement('div');
+      rejoinNotice.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:1rem;';
+      rejoinNotice.innerHTML = `<div style="font-size:3rem">🔄</div><div style="font-family:Caveat,cursive;font-size:2rem;color:var(--ink-blue)">Reconnecting to game...</div><div style="color:var(--pencil-gray)">Room ${savedRoomCode}</div>`;
+      screenHome.parentElement.appendChild(rejoinNotice);
+
+      socket.emit('join_room', { code: savedRoomCode, playerName: 'Reconnecting...', persistentId });
+
+      // If server doesn't accept rejoin in 3s, fall back to home
+      const rejoinTimeout = setTimeout(() => {
+        rejoinNotice.remove();
+        screenHome.classList.remove('hidden');
+        localStorage.removeItem('nhRoomCode');
+      }, 3000);
+
+      // Mark to cancel timeout on successful rejoin
+      socket._rejoinTimeout = rejoinTimeout;
+      socket._rejoinNotice = rejoinNotice;
+    }
 
     // Host Settings triggers
     function registerSettingsListeners() {
@@ -1310,10 +1417,15 @@
 
     // Socket Event: Room Joined
     socket.on('room_joined', ({ code, settings, players: currentPlayers, myId: assignedId }) => {
+      // Cancel any auto-rejoin flow
+      if (socket._rejoinTimeout) { clearTimeout(socket._rejoinTimeout); socket._rejoinTimeout = null; }
+      if (socket._rejoinNotice) { socket._rejoinNotice.remove(); socket._rejoinNotice = null; }
+
       myId = assignedId;
       roomCode = code;
       currentSettings = settings;
       players = currentPlayers;
+      localStorage.setItem('nhRoomCode', code);
       
       labelRoomCode.innerText = code;
       isHost = (players[0] && players[0].id === myId);
@@ -1848,11 +1960,17 @@
       btnGiveUp.disabled = true;
       btnGiveUp.innerText = 'Give Up (10s)';
 
-      // Hide overlays
+      // Hide all overlays
       searcherBonusOverlay.classList.add('hidden');
       callerBonusBanner.classList.add('hidden');
       callerNormalCard.classList.remove('hidden');
       tallyGrid.classList.remove('frenzy-active');
+      pauseOverlay.classList.add('hidden');
+      reconnectOverlay.classList.add('hidden');
+      if (socket._reconnectCountdownInterval) {
+        clearInterval(socket._reconnectCountdownInterval);
+        socket._reconnectCountdownInterval = null;
+      }
 
       // Determine initial roles
       myRole = (firstCaller === myId) ? 'caller' : 'searcher';
@@ -2159,6 +2277,201 @@
       }, 1000);
     });
 
+    // Pause button
+    btnPauseGame.addEventListener('click', () => {
+      socket.emit('pause_game');
+    });
+
+    // Resume button
+    btnResumeGame.addEventListener('click', () => {
+      socket.emit('resume_game');
+    });
+
+    // Socket Event: Game Paused
+    socket.on('game_paused', ({ pausedBy, pausedByName }) => {
+      const isMe = pausedBy === myId;
+      pauseOverlaySub.innerText = isMe ? 'You paused the game.' : `${pausedByName} paused the game.`;
+      // Only the pauser or host can see the resume button
+      btnResumeGame.style.display = (isMe || isHost) ? 'inline-block' : 'none';
+      pauseOverlay.classList.remove('hidden');
+    });
+
+    // Socket Event: Game Resumed
+    socket.on('game_resumed', ({ bonusTimeRemaining }) => {
+      pauseOverlay.classList.remove('hidden'); // briefly keep visible
+      pauseOverlay.classList.add('hidden');
+
+      // If we were mid give-up bonus, restart client countdown
+      if (bonusTimeRemaining > 0) {
+        if (myRole === 'caller') {
+          callerNormalCard.classList.add('hidden');
+          callerBonusBanner.classList.remove('hidden');
+          tallyGrid.classList.add('frenzy-active');
+          let timeLeft = bonusTimeRemaining / 1000;
+          callerBonusTimer.innerText = `${timeLeft.toFixed(1)}s`;
+          clearInterval(bonusCountdownInterval);
+          bonusCountdownInterval = setInterval(() => {
+            timeLeft -= 0.1;
+            if (timeLeft <= 0) { clearInterval(bonusCountdownInterval); callerBonusTimer.innerText = '0.0s'; }
+            else callerBonusTimer.innerText = `${timeLeft.toFixed(1)}s`;
+          }, 100);
+        } else {
+          searcherBonusOverlay.classList.remove('hidden');
+          let timeLeft = bonusTimeRemaining / 1000;
+          searcherBonusTimer.innerText = Math.ceil(timeLeft);
+          clearInterval(bonusCountdownInterval);
+          bonusCountdownInterval = setInterval(() => {
+            timeLeft -= 1;
+            if (timeLeft <= 0) { clearInterval(bonusCountdownInterval); searcherBonusTimer.innerText = '0'; }
+            else searcherBonusTimer.innerText = Math.ceil(timeLeft);
+          }, 1000);
+        }
+      }
+    });
+
+    // Socket Event: Game Rejoined (full state restore)
+    socket.on('game_rejoined', ({ myId: newId, players: serverPlayers, roomCode: rc, state, seed, settings, currentCaller, currentNumber: cn, tappingLocked, paused, pausedBy, myTappedBoxes, bonusTimeRemaining }) => {
+      if (socket._rejoinTimeout) { clearTimeout(socket._rejoinTimeout); socket._rejoinTimeout = null; }
+      if (socket._rejoinNotice) { socket._rejoinNotice.remove(); socket._rejoinNotice = null; }
+
+      myId = newId;
+      roomCode = rc;
+      currentSettings = settings;
+      currentNumber = cn;
+      localStorage.setItem('nhRoomCode', rc);
+
+      players = serverPlayers;
+      isHost = players[0] && players[0].id === myId;
+      myRole = currentCaller === myId ? 'caller' : 'searcher';
+
+      if (state === 'playing' || state === 'paused') {
+        currentSeed = seed;
+
+        // Rebuild board structures
+        buildTallyGrid(settings.tallySize, seed);
+        buildScatteredPage(seed, settings.numRange);
+
+        // Restore scores from server player objects
+        const me = players.find(p => p.id === myId);
+        const opp = players.find(p => p.id !== myId);
+        tapScore = me ? me.score : 0;
+        opponentScore = opp ? opp.score : 0;
+        scorePlayer.innerText = `${tapScore} / ${totalTargetTaps}`;
+        scoreOpponent.innerText = `${opponentScore} / ${totalTargetTaps}`;
+
+        // Re-apply tapped states visually
+        if (myTappedBoxes && myRole === 'caller') {
+          const tapCounts = {};
+          myTappedBoxes.forEach(idx => { tapCounts[idx] = (tapCounts[idx] || 0) + 1; });
+          Object.entries(tapCounts).forEach(([idx, count]) => {
+            const box = tallyGrid.querySelector(`.tally-box[data-index="${idx}"]`);
+            const st = boxTapStates[parseInt(idx)];
+            if (box && st) {
+              st.taps = count;
+              if (st.type === 'double') {
+                if (count === 1) box.classList.add('half-filled');
+                else if (count >= 2) { box.classList.remove('half-filled'); box.classList.add('filled'); }
+              } else if (count >= 1) box.classList.add('filled');
+            }
+          });
+        }
+
+        // Restore tally lock state
+        if (tappingLocked && myRole === 'caller') {
+          tallyLockOverlay.classList.remove('hidden');
+          tallyLockOverlay.innerText = currentNumber ? 'Role Swapped!' : 'Call a number first!';
+        } else if (!tappingLocked && myRole === 'caller') {
+          tallyLockOverlay.classList.add('hidden');
+          btnSubmitCall.disabled = true;
+          inputCallNumber.disabled = true;
+        }
+
+        inkLevel = 15;
+        updateInkwellUI();
+        hintsLeft = 3;
+        btnHint.innerText = 'Use Hint (3 Left)';
+        btnHint.disabled = !cn;
+        btnGiveUp.disabled = true;
+        btnGiveUp.innerText = 'Give Up (10s)';
+
+        if (cn && myRole === 'searcher') startGiveUpCooldown();
+
+        updateGameLayoutRoles();
+        showScreen('game');
+
+        if (paused) {
+          const pauser = players.find(p => p.id === pausedBy);
+          pauseOverlaySub.innerText = pauser ? `${pauser.name} paused the game.` : 'Game is paused.';
+          btnResumeGame.style.display = isHost ? 'inline-block' : 'none';
+          pauseOverlay.classList.remove('hidden');
+        }
+
+        showError('Reconnected to game! Welcome back.');
+      } else if (state === 'lobby') {
+        showScreen('lobby');
+        labelRoomCode.innerText = rc;
+        updateLobbyPlayersList();
+      }
+    });
+
+    // Socket Event: Opponent Disconnected
+    socket.on('opponent_disconnected', ({ name, reconnectWindowMs }) => {
+      reconnectOverlaySub.innerText = `${name} lost connection. Waiting for them to return...`;
+      let secsLeft = Math.ceil(reconnectWindowMs / 1000);
+      reconnectCountdown.innerText = secsLeft;
+      reconnectOverlay.classList.remove('hidden');
+
+      if (socket._reconnectCountdownInterval) clearInterval(socket._reconnectCountdownInterval);
+      socket._reconnectCountdownInterval = setInterval(() => {
+        secsLeft--;
+        reconnectCountdown.innerText = Math.max(0, secsLeft);
+        if (secsLeft <= 0) {
+          clearInterval(socket._reconnectCountdownInterval);
+          socket._reconnectCountdownInterval = null;
+        }
+      }, 1000);
+    });
+
+    // Socket Event: Opponent Reconnected
+    socket.on('opponent_reconnected', ({ players: updatedPlayers }) => {
+      players = updatedPlayers;
+      reconnectOverlay.classList.add('hidden');
+      if (socket._reconnectCountdownInterval) {
+        clearInterval(socket._reconnectCountdownInterval);
+        socket._reconnectCountdownInterval = null;
+      }
+      showError('Opponent reconnected! Resuming game...');
+    });
+
+    // Socket Event: Opponent Forfeited
+    socket.on('opponent_forfeited', ({ winnerId, winnerName, forfeiterName }) => {
+      reconnectOverlay.classList.add('hidden');
+      if (socket._reconnectCountdownInterval) {
+        clearInterval(socket._reconnectCountdownInterval);
+        socket._reconnectCountdownInterval = null;
+      }
+      localStorage.removeItem('nhRoomCode');
+
+      winnerNameDisplay.innerText = winnerName;
+      winnerLabel.innerText = winnerId === myId ? 'Victory!' : 'Defeat!';
+      winnerLabel.style.color = winnerId === myId ? 'var(--ink-blue)' : 'var(--ink-red)';
+
+      if (winnerId === myId) {
+        showError(`${forfeiterName} didn't return — you win by forfeit!`);
+        const duration = 3 * 1000;
+        const end = Date.now() + duration;
+        (function frame() {
+          confetti({ particleCount: 3, angle: 60, spread: 55, origin: { x: 0 } });
+          confetti({ particleCount: 3, angle: 120, spread: 55, origin: { x: 1 } });
+          if (Date.now() < end) requestAnimationFrame(frame);
+        }());
+      }
+
+      if (isHost) { btnPlayAgain.classList.remove('hidden'); btnPlayAgain.innerText = 'Play Again'; }
+      else btnPlayAgain.classList.add('hidden');
+      showScreen('winner');
+    });
+
     // Play Again (Host Only)
     btnPlayAgain.addEventListener('click', () => {
       if (!isHost) return;
@@ -2167,10 +2480,11 @@
 
     // Go Home
     btnGoHome.addEventListener('click', () => {
+      localStorage.removeItem('nhRoomCode');
       window.location.reload();
     });
 
-    // Opponent left
+    // Opponent left (lobby disconnect)
     socket.on('opponent_left', () => {
       showError('Opponent disconnected. Returning to lobby...');
       setTimeout(() => {
