@@ -163,6 +163,12 @@
       color: var(--ink-blue);
     }
 
+    .btn-outline-red {
+      background-color: transparent;
+      color: var(--ink-red);
+      border-color: var(--ink-red);
+    }
+
     .btn:disabled {
       background-color: #ccc !important;
       border-color: #ccc !important;
@@ -1024,7 +1030,10 @@
             </div>
           </div>
 
-          <button id="btnStartGame" class="btn" style="width: 100%; margin-top: 1rem;" disabled>Wait for Players...</button>
+          <div style="display: flex; gap: 10px; margin-top: 1rem;">
+            <button id="btnLeaveLobby" class="btn btn-outline-red" style="flex: 1; margin: 0;">Leave Room</button>
+            <button id="btnStartGame" class="btn" style="flex: 1; margin: 0;" disabled>Wait for Players...</button>
+          </div>
         </div>
       </div>
 
@@ -1043,13 +1052,16 @@
           <div class="overlay-icon">📶</div>
           <div class="overlay-title">Opponent Disconnected</div>
           <div id="reconnectOverlaySub" class="overlay-sub">Waiting for them to reconnect...</div>
-          <div id="reconnectCountdown" class="reconnect-countdown">60</div>
-          <div class="overlay-sub">They have 60 seconds to come back, otherwise they forfeit.</div>
+          <div id="reconnectCountdown" class="reconnect-countdown">300</div>
+          <div id="reconnectOverlayMsg" class="overlay-sub">They have 300 seconds to come back, otherwise they forfeit.</div>
         </div>
 
         <div class="game-hud">
           <div id="hudRoleBadge" class="role-badge role-caller">Caller</div>
-          <button id="btnPauseGame" class="btn-pause" title="Pause game">⏸ Pause</button>
+          <div style="display: flex; gap: 8px;">
+            <button id="btnPauseGame" class="btn-pause" title="Pause game">⏸ Pause</button>
+            <button id="btnQuitMatch" class="btn-pause" title="Quit match" style="border-color: var(--ink-red); color: var(--ink-red);">🏳️ Quit</button>
+          </div>
         </div>
 
         <div class="scores-row">
@@ -1337,6 +1349,25 @@
       joinCodeContainer.classList.toggle('hidden');
       if (!joinCodeContainer.classList.contains('hidden')) {
         inputRoomCode.focus();
+      }
+    });
+
+    // Leave Lobby / Back to Home
+    const btnLeaveLobby = document.getElementById('btnLeaveLobby');
+    btnLeaveLobby.addEventListener('click', () => {
+      localStorage.removeItem('nhRoomCode');
+      window.location.reload();
+    });
+
+    // Quit Match
+    const btnQuitMatch = document.getElementById('btnQuitMatch');
+    btnQuitMatch.addEventListener('click', () => {
+      if (confirm("Are you sure you want to quit the match? This will count as a forfeit.")) {
+        localStorage.removeItem('nhRoomCode');
+        socket.emit('quit_match');
+        setTimeout(() => {
+          window.location.reload();
+        }, 100);
       }
     });
 
@@ -2419,6 +2450,10 @@
       reconnectOverlaySub.innerText = `${name} lost connection. Waiting for them to return...`;
       let secsLeft = Math.ceil(reconnectWindowMs / 1000);
       reconnectCountdown.innerText = secsLeft;
+      const reconnectOverlayMsg = document.getElementById('reconnectOverlayMsg');
+      if (reconnectOverlayMsg) {
+        reconnectOverlayMsg.innerText = `They have ${secsLeft} seconds to come back, otherwise they forfeit.`;
+      }
       reconnectOverlay.classList.remove('hidden');
 
       if (socket._reconnectCountdownInterval) clearInterval(socket._reconnectCountdownInterval);

@@ -637,6 +637,61 @@ io.on('connection', (socket) => {
     console.log(`Game reset in room ${roomCode}. Seed: ${room.seed}`);
   });
 
+  // 9.5. Quit Match
+  socket.on('quit_match', () => {
+    const roomCode = socket.roomId;
+    if (!roomCode) return;
+
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    console.log(`Player ${player.name} quit match in room ${roomCode}`);
+
+    // If game was playing or paused, other player wins immediately by forfeit
+    if (room.state === 'playing' || room.state === 'paused') {
+      const winner = room.players.find(p => p.id !== socket.id && p.connected);
+      if (winner) {
+        room.state = 'game_over';
+        if (room.bonusTimeout) {
+          clearTimeout(room.bonusTimeout);
+          room.bonusTimeout = null;
+        }
+        io.to(roomCode).emit('opponent_forfeited', {
+          winnerId: winner.id,
+          winnerName: winner.name,
+          forfeiterName: player.name
+        });
+        console.log(`${player.name} forfeited via quit in room ${roomCode}. Winner: ${winner.name}`);
+      }
+    }
+
+    // Cancel reconnect timeouts if any
+    if (player.reconnectTimeout) {
+      clearTimeout(player.reconnectTimeout);
+      player.reconnectTimeout = null;
+    }
+
+    // Remove player from room immediately
+    room.players = room.players.filter(p => p.id !== socket.id);
+    socket.roomId = null;
+
+    if (room.players.length === 0) {
+      rooms.delete(roomCode);
+      console.log(`Room ${roomCode} deleted (empty after quit)`);
+    } else {
+      // Remaining player in lobby/game over state
+      if (room.state !== 'game_over') {
+        room.state = 'lobby';
+        room.players[0].ready = true;
+        io.to(roomCode).emit('opponent_left');
+        io.to(roomCode).emit('player_joined', { players: room.players });
+      }
+    }
+  });
+
   // 10. Disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
@@ -660,13 +715,13 @@ io.on('connection', (socket) => {
         clearTimeout(room.bonusTimeout);
         room.bonusTimeout = null;
       }
-      // Give 60s for anyone to come back, then delete
+      // Give 5 minutes for anyone to come back, then delete
       setTimeout(() => {
         if (rooms.has(roomCode) && connectedCount(rooms.get(roomCode)) === 0) {
           rooms.delete(roomCode);
           console.log(`Room ${roomCode} deleted (all players gone)`);
         }
-      }, 60000);
+      }, 300000);
       return;
     }
 
@@ -687,10 +742,10 @@ io.on('connection', (socket) => {
       // Notify the remaining player
       io.to(roomCode).emit('opponent_disconnected', {
         name: player.name,
-        reconnectWindowMs: 60000
+        reconnectWindowMs: 300000
       });
 
-      // Start 60-second forfeit countdown
+      // Start 5-minute forfeit countdown
       player.reconnectTimeout = setTimeout(() => {
         player.reconnectTimeout = null;
         // Player never came back — forfeit
@@ -713,7 +768,7 @@ io.on('connection', (socket) => {
         if (room.players.length === 0) {
           rooms.delete(roomCode);
         }
-      }, 60000);
+      }, 300000);
 
     } else {
       // In lobby or game_over — just remove immediately
