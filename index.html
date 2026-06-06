@@ -1109,6 +1109,111 @@
       padding: 0.3rem 0.6rem;
       font-size: 1.1rem;
     }
+    /* How to Play screen */
+    .htp-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .htp-section h2 {
+      font-size: 1.6rem;
+      color: var(--ink-blue);
+      margin-bottom: 0.5rem;
+      border-bottom: 2px dashed var(--ink-blue);
+      padding-bottom: 0.2rem;
+    }
+
+    .htp-steps {
+      list-style: none;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0.7rem;
+    }
+
+    .htp-steps li {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      font-size: 1.15rem;
+      line-height: 1.4;
+    }
+
+    .htp-num {
+      font-family: 'Caveat', cursive;
+      font-size: 1.6rem;
+      color: var(--ink-red);
+      font-weight: bold;
+      min-width: 26px;
+      line-height: 1.1;
+    }
+
+    .htp-role-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 0.5rem;
+    }
+
+    .htp-role-card {
+      border-radius: 12px;
+      padding: 0.8rem 1rem;
+      font-size: 1.05rem;
+    }
+
+    .htp-role-card.caller {
+      background: rgba(28, 61, 90, 0.08);
+      border: 2px solid var(--ink-blue);
+    }
+
+    .htp-role-card.searcher {
+      background: rgba(158, 42, 43, 0.08);
+      border: 2px solid var(--ink-red);
+    }
+
+    .htp-role-title {
+      font-family: 'Caveat', cursive;
+      font-size: 1.5rem;
+      font-weight: bold;
+      display: block;
+      margin-bottom: 0.3rem;
+    }
+
+    .htp-role-card.caller .htp-role-title { color: var(--ink-blue); }
+    .htp-role-card.searcher .htp-role-title { color: var(--ink-red); }
+
+    .htp-tip-box {
+      background: var(--accent-yellow);
+      border: 2px dashed var(--pencil-lead);
+      border-radius: 10px;
+      padding: 0.8rem 1rem;
+      font-size: 1.1rem;
+      margin-top: 0.5rem;
+    }
+
+    .htp-cells {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .htp-cell-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 1.1rem;
+    }
+
+    .htp-cell-demo {
+      width: 36px;
+      height: 36px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
@@ -1149,7 +1254,99 @@
             <input type="text" id="inputRoomCode" class="input-field" placeholder="Enter 4-character code..." maxlength="4">
             <button id="btnSubmitJoin" class="btn" style="width:100%;">Join Match!</button>
           </div>
+
+          <button id="btnHowToPlay" class="btn btn-outline" style="width:100%; margin-top: 1rem; font-size: 1.1rem;">📖 How to Play</button>
         </div>
+      </div>
+
+      <!-- 1.5. HOW TO PLAY SCREEN -->
+      <div id="screenHowToPlay" class="screen hidden">
+        <h1 style="font-size: 2.5rem;">How to Play</h1>
+
+        <div class="htp-section">
+          <h2>🎯 The Goal</h2>
+          <p style="font-size:1.15rem; line-height:1.5;">Number Hunt is a 2-player real-time game. Players swap between two roles each round. The <strong>Caller</strong> marks off a tally board as fast as possible. The <strong>Searcher</strong> hunts for the number on a cluttered page. First to fill their tally board wins!</p>
+        </div>
+
+        <div class="htp-section">
+          <h2>🎭 The Roles</h2>
+          <div class="htp-role-grid">
+            <div class="htp-role-card caller">
+              <span class="htp-role-title">✏️ Caller</span>
+              <ul style="padding-left:1rem; font-size:1rem; line-height:1.6;">
+                <li>Pick a number from the allowed range</li>
+                <li>Shout it out to the Searcher</li>
+                <li>Tap tally boxes as fast as you can!</li>
+                <li>Fill every box to win</li>
+              </ul>
+            </div>
+            <div class="htp-role-card searcher">
+              <span class="htp-role-title">🔍 Searcher</span>
+              <ul style="padding-left:1rem; font-size:1rem; line-height:1.6;">
+                <li>Listen for the Caller’s number</li>
+                <li>Scan the cluttered page to find it</li>
+                <li>Tap it as quickly as possible</li>
+                <li>Finding it stops the Caller’s tapping!</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="htp-section">
+          <h2>🔄 How Rounds Work</h2>
+          <ol class="htp-steps">
+            <li><span class="htp-num">1</span><span>The Caller types a number and submits it &mdash; the Searcher sees it highlighted.</span></li>
+            <li><span class="htp-num">2</span><span>The Caller taps tally boxes furiously while the Searcher scans the page.</span></li>
+            <li><span class="htp-num">3</span><span>When the Searcher finds and taps the number, tapping <strong>locks</strong> and roles swap.</span></li>
+            <li><span class="htp-num">4</span><span>Repeat until one player fills their entire tally board &mdash; that’s a win!</span></li>
+          </ol>
+        </div>
+
+        <div class="htp-section">
+          <h2>⭐ Special Tally Cells</h2>
+          <div class="htp-cells">
+            <div class="htp-cell-row">
+              <div class="htp-cell-demo" style="border:2px dashed #7a7a7a;"></div>
+              <span><strong>Normal cell</strong> &mdash; tap once to fill it.</span>
+            </div>
+            <div class="htp-cell-row">
+              <div class="htp-cell-demo" style="border:3px double #333;"></div>
+              <span><strong>Double-tap cell</strong> &mdash; needs two taps to fill. Worth 2 points!</span>
+            </div>
+            <div class="htp-cell-row">
+              <div class="htp-cell-demo" style="background:#e5e5e5; background-image:repeating-linear-gradient(45deg,#7a7a7a 0,#7a7a7a 2px,transparent 2px,transparent 10px); border:2px solid #7a7a7a;"></div>
+              <span><strong>Blocked cell</strong> &mdash; cannot be tapped. Avoid it!</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="htp-section">
+          <h2>💡 Power-ups &amp; Features</h2>
+          <div class="htp-tip-box">
+            <strong>🔍 Hint</strong> &mdash; Searcher gets 3 hints per game. Highlights which quadrant of the page to look in.
+          </div>
+          <div class="htp-tip-box" style="margin-top:0.5rem;">
+            <strong>🏳️ Give Up</strong> &mdash; If the Searcher can’t find the number, they can give up. The Caller gets a 5-second bonus tapping frenzy!
+          </div>
+          <div class="htp-tip-box" style="margin-top:0.5rem;">
+            <strong>✍️ Ink Refill</strong> &mdash; Each tally tap uses ink. Click the inkwell bottle when you run dry!
+          </div>
+          <div class="htp-tip-box" style="margin-top:0.5rem;">
+            <strong>⏸ Pause</strong> &mdash; Either player can pause. Only the pauser or host can resume.
+          </div>
+        </div>
+
+        <div class="htp-section">
+          <h2>📱 Tips for Beginners</h2>
+          <ul class="htp-steps">
+            <li><span class="htp-num">★</span><span>As the Caller, tap a number you know the Searcher will struggle to find!</span></li>
+            <li><span class="htp-num">★</span><span>As the Searcher, use the <strong>Hint</strong> early &mdash; don’t save it for when you’re stuck.</span></li>
+            <li><span class="htp-num">★</span><span>Faint and rotated numbers on the page are real &mdash; don’t ignore them!</span></li>
+            <li><span class="htp-num">★</span><span>Bigger grids (8×8, 10×10) have blocked and double-tap cells &mdash; plan ahead.</span></li>
+          </ul>
+        </div>
+
+        <button id="btnBackFromHtp" class="btn" style="width: 100%; margin-top: 0.5rem;">← Back to Home</button>
       </div>
 
       <!-- 2. LOBBY SCREEN -->
@@ -1507,11 +1704,14 @@
     inputPlayerName.value = 'Player_' + Math.floor(Math.random() * 900 + 100);
 
     // Navigation Helper
+    const screenHowToPlay = document.getElementById('screenHowToPlay');
+
     function showScreen(screen) {
       screenHome.classList.add('hidden');
       screenLobby.classList.add('hidden');
       screenGame.classList.add('hidden');
       screenWinner.classList.add('hidden');
+      screenHowToPlay.classList.add('hidden');
       adsenseSection.classList.remove('hidden');
 
       if (screen === 'home') {
@@ -1520,9 +1720,11 @@
         screenLobby.classList.remove('hidden');
       } else if (screen === 'game') {
         screenGame.classList.remove('hidden');
-        adsenseSection.classList.add('hidden'); // Hide Ads during active gameplay
+        adsenseSection.classList.add('hidden');
       } else if (screen === 'winner') {
         screenWinner.classList.remove('hidden');
+      } else if (screen === 'howtoplay') {
+        screenHowToPlay.classList.remove('hidden');
       }
     }
 
@@ -1553,6 +1755,14 @@
       if (!joinCodeContainer.classList.contains('hidden')) {
         inputRoomCode.focus();
       }
+    });
+
+    // How to Play navigation
+    document.getElementById('btnHowToPlay').addEventListener('click', () => {
+      showScreen('howtoplay');
+    });
+    document.getElementById('btnBackFromHtp').addEventListener('click', () => {
+      showScreen('home');
     });
 
     // Leave Lobby / Back to Home
