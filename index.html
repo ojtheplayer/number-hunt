@@ -938,6 +938,120 @@
         font-size: 2.8rem;
       }
     }
+
+    /* Collapsible Chat Widget styling */
+    .chat-widget {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 300px;
+      z-index: 150;
+      border: 3px solid var(--ink-blue);
+      border-radius: 15px;
+      background: var(--paper-bg);
+      box-shadow: 4px 6px 0px var(--pencil-lead);
+      font-family: 'Patrick Hand', cursive;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: transform 0.2s ease;
+    }
+
+    @media (max-width: 600px) {
+      .chat-widget {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        width: auto;
+      }
+    }
+
+    .chat-header {
+      background: var(--ink-blue);
+      color: #fff;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 1.2rem;
+      font-weight: bold;
+      user-select: none;
+    }
+
+    .chat-badge {
+      background: var(--ink-red);
+      color: #fff;
+      font-size: 0.8rem;
+      padding: 0.1rem 0.4rem;
+      border-radius: 10px;
+      margin-left: auto;
+      margin-right: 10px;
+      border: 1px solid #fff;
+    }
+
+    .chat-body {
+      display: flex;
+      flex-direction: column;
+      height: 250px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.7);
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      margin-bottom: 8px;
+      padding-right: 5px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chat-message {
+      font-size: 1.1rem;
+      line-height: 1.2;
+      padding: 4px 8px;
+      border-radius: 8px;
+      max-width: 85%;
+      word-break: break-word;
+    }
+
+    .chat-message.self {
+      background-color: rgba(28, 61, 90, 0.1);
+      color: var(--ink-blue);
+      align-self: flex-end;
+      border-bottom-right-radius: 2px;
+      border: 1px solid rgba(28, 61, 90, 0.2);
+    }
+
+    .chat-message.other {
+      background-color: rgba(158, 42, 43, 0.1);
+      color: var(--ink-red);
+      align-self: flex-start;
+      border-bottom-left-radius: 2px;
+      border: 1px solid rgba(158, 42, 43, 0.2);
+    }
+
+    .chat-message-sender {
+      font-size: 0.85rem;
+      font-weight: bold;
+      margin-bottom: 2px;
+      display: block;
+    }
+
+    .chat-input-row {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chat-input-row input {
+      flex: 1;
+      margin-bottom: 0;
+      padding: 0.3rem 0.6rem;
+      font-size: 1.1rem;
+    }
   </style>
 </head>
 <body>
@@ -1190,6 +1304,22 @@
 
   </div>
 
+  <!-- Collapsible Chat Box -->
+  <div id="chatWidget" class="chat-widget hidden">
+    <div id="chatHeader" class="chat-header">
+      <span>💬 Room Chat</span>
+      <span id="chatUnreadBadge" class="chat-badge hidden">0</span>
+      <span id="chatToggleIcon">▲</span>
+    </div>
+    <div id="chatBody" class="chat-body hidden">
+      <div id="chatMessages" class="chat-messages"></div>
+      <div class="chat-input-row">
+        <input type="text" id="chatInput" class="input-field" placeholder="Type a message..." maxlength="100">
+        <button id="btnSendChat" class="btn btn-outline" style="margin: 0; padding: 0.3rem 0.8rem; font-size: 1.1rem;">Send</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Socket.io client -->
   <script src="/socket.io/socket.io.js"></script>
   
@@ -1300,6 +1430,19 @@
     const btnPlayAgain = document.getElementById('btnPlayAgain');
     const btnGoHome = document.getElementById('btnGoHome');
 
+    // Chat Elements
+    const chatWidget = document.getElementById('chatWidget');
+    const chatHeader = document.getElementById('chatHeader');
+    const chatBody = document.getElementById('chatBody');
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const btnSendChat = document.getElementById('btnSendChat');
+    const chatUnreadBadge = document.getElementById('chatUnreadBadge');
+    const chatToggleIcon = document.getElementById('chatToggleIcon');
+
+    let isChatExpanded = false;
+    let unreadCount = 0;
+
     // Randomize initial guest name
     inputPlayerName.value = 'Player_' + Math.floor(Math.random() * 900 + 100);
 
@@ -1370,6 +1513,60 @@
         }, 100);
       }
     });
+
+    // Chat Events Setup
+    chatHeader.addEventListener('click', () => {
+      isChatExpanded = !isChatExpanded;
+      if (isChatExpanded) {
+        chatBody.classList.remove('hidden');
+        chatToggleIcon.innerText = '▼';
+        unreadCount = 0;
+        chatUnreadBadge.classList.add('hidden');
+        chatUnreadBadge.innerText = '0';
+        chatInput.focus();
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      } else {
+        chatBody.classList.add('hidden');
+        chatToggleIcon.innerText = '▲';
+      }
+    });
+
+    btnSendChat.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') sendChatMessage();
+    });
+
+    function sendChatMessage() {
+      const msg = chatInput.value.trim();
+      if (!msg) return;
+      socket.emit('send_chat', { message: msg });
+      chatInput.value = '';
+      chatInput.focus();
+    }
+
+    function appendChatMessage(senderId, senderName, message) {
+      const msgDiv = document.createElement('div');
+      const isSelf = senderId === myId;
+      msgDiv.className = `chat-message ${isSelf ? 'self' : 'other'}`;
+      
+      msgDiv.innerHTML = `
+        <span class="chat-message-sender" style="color: ${isSelf ? 'var(--ink-blue)' : 'var(--ink-red)'}">${isSelf ? 'You' : senderName}</span>
+        <div>${escapeHTML(message)}</div>
+      `;
+      
+      chatMessages.appendChild(msgDiv);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+
+      if (!isChatExpanded) {
+        unreadCount++;
+        chatUnreadBadge.innerText = unreadCount;
+        chatUnreadBadge.classList.remove('hidden');
+      }
+    }
+
+    function escapeHTML(str) {
+      return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
 
     // Create Room Trigger
     btnCreateRoom.addEventListener('click', () => {
@@ -1472,6 +1669,15 @@
 
       showScreen('lobby');
       updateLobbyPlayersList();
+
+      // Show and reset chat
+      chatWidget.classList.remove('hidden');
+      chatMessages.innerHTML = '';
+      unreadCount = 0;
+      chatUnreadBadge.classList.add('hidden');
+      isChatExpanded = false;
+      chatBody.classList.add('hidden');
+      chatToggleIcon.innerText = '▲';
     });
 
     // Socket Event: Players list update
@@ -2443,6 +2649,15 @@
         labelRoomCode.innerText = rc;
         updateLobbyPlayersList();
       }
+
+      // Show and reset chat on rejoin
+      chatWidget.classList.remove('hidden');
+      chatMessages.innerHTML = '';
+      unreadCount = 0;
+      chatUnreadBadge.classList.add('hidden');
+      isChatExpanded = false;
+      chatBody.classList.add('hidden');
+      chatToggleIcon.innerText = '▲';
     });
 
     // Socket Event: Opponent Disconnected
@@ -2525,6 +2740,11 @@
       setTimeout(() => {
         showScreen('lobby');
       }, 2500);
+    });
+
+    // Receive chat message
+    socket.on('receive_chat', ({ senderId, senderName, message }) => {
+      appendChatMessage(senderId, senderName, message);
     });
 
     // Error messages from server

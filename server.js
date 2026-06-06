@@ -692,6 +692,27 @@ io.on('connection', (socket) => {
     }
   });
 
+  // 9.7. Chat Messages
+  socket.on('send_chat', ({ message }) => {
+    const roomCode = socket.roomId;
+    if (!roomCode) return;
+
+    const room = rooms.get(roomCode);
+    if (!room) return;
+
+    const player = room.players.find(p => p.id === socket.id);
+    if (!player) return;
+
+    const cleanMsg = (message || '').trim().substring(0, 100);
+    if (!cleanMsg) return;
+
+    io.to(roomCode).emit('receive_chat', {
+      senderId: socket.id,
+      senderName: player.name,
+      message: cleanMsg
+    });
+  });
+
   // 10. Disconnect
   socket.on('disconnect', () => {
     console.log(`Player disconnected: ${socket.id}`);
