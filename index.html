@@ -1354,9 +1354,12 @@
         <h1>Room Lobby</h1>
         <div class="handdrawn-box">
           <div style="text-align: center; margin-bottom: 0.5rem; font-size: 1.1rem; color: var(--pencil-gray);">Room Code</div>
-          <div class="room-code-display">
+          <div class="room-code-display" style="flex-wrap: wrap; justify-content: center; gap: 10px;">
             <span id="labelRoomCode">----</span>
-            <button id="btnCopyCode" class="btn btn-outline" style="font-size: 1rem; padding: 0.2rem 0.6rem; margin: 0;">Copy</button>
+            <div style="display: flex; gap: 8px; flex-shrink: 0;">
+              <button id="btnCopyCode" class="btn btn-outline" style="font-size: 0.9rem; padding: 0.2rem 0.6rem; margin: 0;">Copy Code</button>
+              <button id="btnCopyLink" class="btn btn-outline" style="font-size: 0.9rem; padding: 0.2rem 0.6rem; margin: 0;">Copy Link</button>
+            </div>
           </div>
 
           <h2>Players Connected:</h2>
@@ -1635,6 +1638,7 @@
     // Lobby Elements
     const labelRoomCode = document.getElementById('labelRoomCode');
     const btnCopyCode = document.getElementById('btnCopyCode');
+    const btnCopyLink = document.getElementById('btnCopyLink');
     const lobbyPlayersList = document.getElementById('lobbyPlayersList');
     const hostSettings = document.getElementById('hostSettings');
     const guestSettings = document.getElementById('guestSettings');
@@ -1742,10 +1746,21 @@
     // Copy room code
     btnCopyCode.addEventListener('click', () => {
       navigator.clipboard.writeText(roomCode).then(() => {
-        btnCopyCode.innerText = 'Copied!';
-        setTimeout(() => { btnCopyCode.innerText = 'Copy'; }, 2000);
+        btnCopyCode.innerText = 'Code Copied!';
+        setTimeout(() => { btnCopyCode.innerText = 'Copy Code'; }, 2000);
       }).catch(err => {
         showError('Failed to copy room code.');
+      });
+    });
+
+    // Copy invite link
+    btnCopyLink.addEventListener('click', () => {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?join=${roomCode}`;
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        btnCopyLink.innerText = 'Link Copied!';
+        setTimeout(() => { btnCopyLink.innerText = 'Copy Link'; }, 2000);
+      }).catch(err => {
+        showError('Failed to copy invite link.');
       });
     });
 
@@ -1862,6 +1877,24 @@
       localStorage.removeItem('nhRoomCode');
       socket.emit('join_room', { code: code, playerName: myName, persistentId });
     });
+
+    // Check for join code in URL query parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinParam = urlParams.get('join');
+    if (joinParam && joinParam.trim().length === 4) {
+      const targetCode = joinParam.trim().toUpperCase();
+      const savedRoom = localStorage.getItem('nhRoomCode');
+      if (savedRoom && savedRoom !== targetCode) {
+        localStorage.removeItem('nhRoomCode');
+      }
+      inputRoomCode.value = targetCode;
+      joinCodeContainer.classList.remove('hidden');
+      // Set focus to the player name input to let them customize it easily
+      setTimeout(() => {
+        inputPlayerName.focus();
+        inputPlayerName.select();
+      }, 100);
+    }
 
     // Auto-rejoin on page load if session exists
     const savedRoomCode = localStorage.getItem('nhRoomCode');
