@@ -944,7 +944,6 @@
       position: fixed;
       bottom: 20px;
       right: 20px;
-      width: 300px;
       z-index: 150;
       border: 3px solid var(--ink-blue);
       border-radius: 15px;
@@ -953,30 +952,75 @@
       font-family: 'Patrick Hand', cursive;
       display: flex;
       flex-direction: column;
-      overflow: hidden;
-      transition: transform 0.2s ease;
+      overflow: visible; /* Show badge overflow when collapsed */
+      transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .chat-widget.expanded {
+      width: 300px;
+      height: auto;
+      border-radius: 15px;
+    }
+
+    .chat-widget.collapsed {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      cursor: pointer;
+      box-shadow: 2px 3px 0px var(--pencil-lead);
     }
 
     @media (max-width: 600px) {
-      .chat-widget {
+      .chat-widget.expanded {
         bottom: 10px;
         right: 10px;
         left: 10px;
         width: auto;
+      }
+      .chat-widget.collapsed {
+        bottom: 15px;
+        right: 15px;
+        left: auto;
+        width: 50px;
+        height: 50px;
       }
     }
 
     .chat-header {
       background: var(--ink-blue);
       color: #fff;
-      padding: 0.6rem 1rem;
       cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      height: 100%;
+      width: 100%;
+    }
+
+    .chat-widget.expanded .chat-header {
+      padding: 0.6rem 1rem;
+      justify-content: space-between;
+      height: auto;
+      width: auto;
+    }
+
+    .chat-collapsed-view {
+      font-size: 1.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      width: 100%;
+    }
+
+    .chat-expanded-view {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      width: 100%;
       font-size: 1.2rem;
       font-weight: bold;
-      user-select: none;
     }
 
     .chat-badge {
@@ -985,9 +1029,22 @@
       font-size: 0.8rem;
       padding: 0.1rem 0.4rem;
       border-radius: 10px;
+      border: 1px solid #fff;
+      z-index: 10;
+    }
+
+    /* Position badge outside the circle in collapsed state */
+    .chat-widget.collapsed .chat-badge {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      margin: 0;
+    }
+
+    /* Standard position inside header in expanded state */
+    .chat-widget.expanded .chat-badge {
       margin-left: auto;
       margin-right: 10px;
-      border: 1px solid #fff;
     }
 
     .chat-body {
@@ -1305,11 +1362,14 @@
   </div>
 
   <!-- Collapsible Chat Box -->
-  <div id="chatWidget" class="chat-widget hidden">
+  <div id="chatWidget" class="chat-widget collapsed hidden">
     <div id="chatHeader" class="chat-header">
-      <span>💬 Room Chat</span>
+      <div class="chat-collapsed-view">💬</div>
+      <div class="chat-expanded-view hidden">
+        <span>💬 Room Chat</span>
+        <span id="chatToggleIcon">▲</span>
+      </div>
       <span id="chatUnreadBadge" class="chat-badge hidden">0</span>
-      <span id="chatToggleIcon">▲</span>
     </div>
     <div id="chatBody" class="chat-body hidden">
       <div id="chatMessages" class="chat-messages"></div>
@@ -1518,16 +1578,23 @@
     chatHeader.addEventListener('click', () => {
       isChatExpanded = !isChatExpanded;
       if (isChatExpanded) {
+        chatWidget.classList.remove('collapsed');
+        chatWidget.classList.add('expanded');
         chatBody.classList.remove('hidden');
-        chatToggleIcon.innerText = '▼';
+        document.querySelector('.chat-collapsed-view').classList.add('hidden');
+        document.querySelector('.chat-expanded-view').classList.remove('hidden');
+        
         unreadCount = 0;
         chatUnreadBadge.classList.add('hidden');
         chatUnreadBadge.innerText = '0';
         chatInput.focus();
         chatMessages.scrollTop = chatMessages.scrollHeight;
       } else {
+        chatWidget.classList.remove('expanded');
+        chatWidget.classList.add('collapsed');
         chatBody.classList.add('hidden');
-        chatToggleIcon.innerText = '▲';
+        document.querySelector('.chat-collapsed-view').classList.remove('hidden');
+        document.querySelector('.chat-expanded-view').classList.add('hidden');
       }
     });
 
@@ -1675,9 +1742,13 @@
       chatMessages.innerHTML = '';
       unreadCount = 0;
       chatUnreadBadge.classList.add('hidden');
+      
       isChatExpanded = false;
+      chatWidget.classList.remove('expanded');
+      chatWidget.classList.add('collapsed');
       chatBody.classList.add('hidden');
-      chatToggleIcon.innerText = '▲';
+      document.querySelector('.chat-collapsed-view').classList.remove('hidden');
+      document.querySelector('.chat-expanded-view').classList.add('hidden');
     });
 
     // Socket Event: Players list update
@@ -2655,9 +2726,13 @@
       chatMessages.innerHTML = '';
       unreadCount = 0;
       chatUnreadBadge.classList.add('hidden');
+      
       isChatExpanded = false;
+      chatWidget.classList.remove('expanded');
+      chatWidget.classList.add('collapsed');
       chatBody.classList.add('hidden');
-      chatToggleIcon.innerText = '▲';
+      document.querySelector('.chat-collapsed-view').classList.remove('hidden');
+      document.querySelector('.chat-expanded-view').classList.add('hidden');
     });
 
     // Socket Event: Opponent Disconnected
